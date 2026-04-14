@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GastroPos Relay</string>
+    <string name="accessibility_service_description">Scrapes order details from merchant apps for GastroPos relay.</string>
+    <string name="main_instructions">Enable Notification Access and Accessibility for GastroPos Relay.</string>
+</resources>
