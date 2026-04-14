@@ -31,6 +31,10 @@ class OrderScraperService : AccessibilityService() {
         if (!supportedPackages.contains(packageName)) return
 
         val pending = OrderRepository.getPending(packageName) ?: return
+        if (OrderRepository.isAlreadyProcessed(this, pending.orderId)) {
+            Log.d("OrderScraper", "Skipping recursive scrape for already processed ${pending.orderId}")
+            return
+        }
         val root = rootInActiveWindow ?: return
 
         val allTexts = mutableListOf<String>()

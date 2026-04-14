@@ -26,27 +26,36 @@ object OrderRelayClient {
     fun send(payload: RelayOrderPayload) {
         executor.execute {
             try {
-                val json = JSONObject().apply {
-                    put("source", payload.source)
-                    put("source_package", payload.sourcePackage)
-                    put("order_id", payload.orderId)
-                    put("total", payload.total ?: JSONObject.NULL)
-                    put("scraped_at_epoch_ms", payload.scrapedAtEpochMs)
-                    put("raw_texts", JSONArray(payload.rawTexts))
-                    put("items", JSONArray().apply {
-                        payload.items.forEach { item ->
-                            put(JSONObject().apply {
-                                put("name", item.name)
-                                put("quantity", item.quantity ?: JSONObject.NULL)
-                                put("price", item.price ?: JSONObject.NULL)
-                            })
-                        }
-                    })
+                val json = try {
+                    JSONObject().apply {
+                        put("source", payload.source)
+                        put("source_package", payload.sourcePackage)
+                        put("order_id", payload.orderId)
+                        put("total", payload.total ?: JSONObject.NULL)
+                        put("scraped_at_epoch_ms", payload.scrapedAtEpochMs)
+                        put("raw_texts", JSONArray(payload.rawTexts))
+                        put("items", JSONArray().apply {
+                            payload.items.forEach { item ->
+                                put(JSONObject().apply {
+                                    put("name", item.name)
+                                    put("quantity", item.quantity ?: JSONObject.NULL)
+                                    put("price", item.price ?: JSONObject.NULL)
+                                })
+                            }
+                        })
+                    }
+                } catch (jsonError: Exception) {
+                    Log.e(
+                        TAG,
+                        "Failed to build JSON for order ${payload.orderId}: ${jsonError.message}",
+                        jsonError
+                    )
+                    return@execute
                 }
 
                 val request = Request.Builder()
                     .url(RELAY_URL)
-                    .header("User-Agent", USER_AGENT)
+                    .addHeader("User-Agent", USER_AGENT)
                     .post(
                         json.toString()
                             .toRequestBody("application/json; charset=utf-8".toMediaType())
@@ -70,6 +79,8 @@ object OrderRelayClient {
                                     TAG,
                                     "Upload failed for ${payload.orderId}: HTTP ${it.code}, body=$responseBody"
                                 )
+                            } else if (it.code == 200) {
+                                Log.i(TAG, "200 OK received for order ${payload.orderId}")
                             } else {
                                 Log.i(TAG, "Upload success for order ${payload.orderId}")
                             }

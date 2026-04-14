@@ -38,7 +38,7 @@ class NotificationReceiverService : NotificationListenerService() {
         }
 
         val source = if (sbn.packageName.contains("grab")) "grab" else "shopee"
-        OrderRepository.addPending(
+        val addedToPending = OrderRepository.addPending(
             OrderRepository.PendingOrder(
                 source = source,
                 sourcePackage = sbn.packageName,
@@ -46,7 +46,11 @@ class NotificationReceiverService : NotificationListenerService() {
             )
         )
 
-        launchMerchantApp(sbn.packageName)
+        if (addedToPending) {
+            launchMerchantApp(sbn.packageName)
+        } else {
+            Log.w("NotificationReceiver", "Failed to enqueue pending order: $orderId")
+        }
     }
 
     private fun isNewOrderNotification(text: String): Boolean {

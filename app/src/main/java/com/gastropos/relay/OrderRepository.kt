@@ -16,8 +16,9 @@ object OrderRepository {
         val createdAt: Long = System.currentTimeMillis()
     )
 
-    fun addPending(order: PendingOrder) {
+    fun addPending(order: PendingOrder): Boolean {
         pendingOrders[order.sourcePackage] = order
+        return true
     }
 
     fun getPending(sourcePackage: String): PendingOrder? = pendingOrders[sourcePackage]
