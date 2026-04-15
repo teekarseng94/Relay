@@ -1,5 +1,6 @@
 package com.gastropos.relay
 
+import android.os.Looper
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Call
@@ -23,8 +24,15 @@ object OrderRelayClient {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
+    /**
+     * Enqueues JSON serialization and OkHttp on a dedicated worker thread.
+     * Safe to call from the main thread; no network or heavy work runs on the caller.
+     */
     fun send(payload: RelayOrderPayload) {
         executor.execute {
+            check(Looper.getMainLooper().thread !== Thread.currentThread()) {
+                "Relay upload must not run on the main thread"
+            }
             try {
                 val json = try {
                     JSONObject().apply {

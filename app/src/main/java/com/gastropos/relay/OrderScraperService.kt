@@ -1,6 +1,8 @@
 package com.gastropos.relay
 
 import android.accessibilityservice.AccessibilityService
+import android.os.SystemClock
+import android.util.ArrayMap
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -15,11 +17,28 @@ class OrderScraperService : AccessibilityService() {
     private val rmPattern = Pattern.compile("RM\\s?\\d+(?:\\.\\d{1,2})?", Pattern.CASE_INSENSITIVE)
     private val qtyPattern = Pattern.compile("(?:qty|x)\\s*[:x]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE)
     private val compactQtyPattern = Pattern.compile("^(\\d+)x$", Pattern.CASE_INSENSITIVE)
-    private val orderIdPattern = Pattern.compile("(?:order|pesanan|id)\\s*[:#]?\\s*([A-Za-z0-9-]{4,})")
+    private val orderIdPattern = Pattern.compile(
+        "(?:order\\s*id|order|pesanan\\s*id|pesanan|id)\\s*[:#-]?\\s*([A-Za-z0-9-]{4,})",
+        Pattern.CASE_INSENSITIVE
+    )
+    private val compactOrderIdPattern = Pattern.compile("#([A-Za-z0-9-]{4,})")
     private val noiseTokens = setOf(
         "accept", "reject", "chat", "call", "delivery", "pickup", "driver",
         "back", "home", "help", "support", "view all", "history"
     )
+
+    private val scrapeDebounceLock = Any()
+    private val lastScrapeElapsedByWindow = ArrayMap<String, Long>()
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.i("OrderScraper", "Service Created")
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        Log.i("OrderScraper", "Service successfully connected and visible")
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -35,48 +54,91 @@ class OrderScraperService : AccessibilityService() {
             Log.d("OrderScraper", "Skipping recursive scrape for already processed ${pending.orderId}")
             return
         }
-        val root = rootInActiveWindow ?: return
 
-        val allTexts = mutableListOf<String>()
-        collectTextsRecursive(root, allTexts)
-        if (allTexts.isEmpty()) return
-        Log.d("OrderScraper", "Collected ${allTexts.size} text nodes for $packageName")
-
-        val scrapedOrderId = findOrderId(allTexts) ?: pending.orderId
-        if (OrderRepository.isAlreadyProcessed(this, scrapedOrderId)) return
-
-        val result = extractItemsAndTotal(allTexts, packageName)
-        if (result.items.isEmpty()) {
-            Log.d("OrderScraper", "No item rows found yet, waiting for more UI updates.")
+        val windowId = event.windowId
+        if (shouldDebounceScrape(packageName, windowId)) {
+            Log.d("OrderScraper", "Debounced scrape (${SCRAPE_DEBOUNCE_MS}ms) for $packageName window=$windowId")
             return
         }
 
-        val payload = RelayOrderPayload(
-            source = pending.source,
-            sourcePackage = packageName,
-            orderId = scrapedOrderId,
-            total = result.total,
-            items = result.items,
-            rawTexts = allTexts,
-            scrapedAtEpochMs = System.currentTimeMillis()
-        )
+        val root = rootInActiveWindow ?: return
+        try {
+            val allTexts = mutableListOf<String>()
+            collectTextsRecursive(root, allTexts)
+            if (allTexts.isEmpty()) return
+            Log.d("OrderScraper", "Collected ${allTexts.size} text nodes for $packageName")
 
-        // Mark processed before dispatching network request to avoid duplicate uploads.
-        OrderRepository.markProcessed(this, scrapedOrderId)
-        OrderRelayClient.send(payload)
-        Log.i("OrderScraper", "Scraped and uploaded order $scrapedOrderId")
+            val scrapedOrderId = findOrderId(allTexts) ?: pending.orderId
+            if (OrderRepository.isAlreadyProcessed(this, scrapedOrderId)) return
+
+            val result = extractItemsAndTotal(allTexts, packageName)
+            logExtractionSummary(scrapedOrderId, packageName, result, allTexts)
+            if (shouldSkipDueToStrictMode(scrapedOrderId, result)) {
+                Log.w(
+                    "OrderScraper",
+                    "Strict mode skipped upload: orderId=$scrapedOrderId items=${result.items.size} total=${result.total ?: "N/A"}"
+                )
+                return
+            }
+            if (result.items.isEmpty()) {
+                Log.d("OrderScraper", "No item rows found yet, waiting for more UI updates.")
+                return
+            }
+
+            val payload = RelayOrderPayload(
+                source = pending.source,
+                sourcePackage = packageName,
+                orderId = scrapedOrderId,
+                total = result.total,
+                items = result.items,
+                rawTexts = allTexts,
+                scrapedAtEpochMs = System.currentTimeMillis()
+            )
+
+            OrderRepository.markProcessed(this, scrapedOrderId)
+            OrderRelayClient.send(payload)
+            Log.i("OrderScraper", "Scraped and uploaded order $scrapedOrderId")
+        } finally {
+            root.recycle()
+        }
     }
 
     override fun onInterrupt() {
         Log.w("OrderScraper", "Accessibility service interrupted")
     }
 
+    private fun shouldDebounceScrape(packageName: String, windowId: Int): Boolean {
+        val key = "$packageName|$windowId"
+        val now = SystemClock.elapsedRealtime()
+        synchronized(scrapeDebounceLock) {
+            val last = lastScrapeElapsedByWindow[key] ?: 0L
+            if (now - last < SCRAPE_DEBOUNCE_MS) return true
+            lastScrapeElapsedByWindow[key] = now
+            return false
+        }
+    }
+
     private fun collectTextsRecursive(node: AccessibilityNodeInfo?, out: MutableList<String>) {
-        if (node == null) return
-        normalizeNodeText(node.text?.toString())?.let { out.add(it) }
-        normalizeNodeText(node.contentDescription?.toString())?.let { out.add(it) }
-        for (i in 0 until node.childCount) {
-            collectTextsRecursive(node.getChild(i), out)
+        if (node == null || out.size >= MAX_TEXT_NODES) return
+        if (!node.isVisibleToUser) return
+
+        val text = normalizeNodeText(node.text?.toString())
+        val desc = normalizeNodeText(node.contentDescription?.toString())
+        val childCount = node.childCount
+        if (childCount == 0 && text == null && desc == null) return
+
+        if (text != null) out.add(text)
+        if (desc != null) out.add(desc)
+        if (out.size >= MAX_TEXT_NODES) return
+
+        for (i in 0 until childCount) {
+            if (out.size >= MAX_TEXT_NODES) break
+            val child = node.getChild(i) ?: continue
+            try {
+                collectTextsRecursive(child, out)
+            } finally {
+                child.recycle()
+            }
         }
     }
 
@@ -92,6 +154,8 @@ class OrderScraperService : AccessibilityService() {
         lines.forEach { line ->
             val matcher = orderIdPattern.matcher(line)
             if (matcher.find()) return matcher.group(1)
+            val compactMatcher = compactOrderIdPattern.matcher(line)
+            if (compactMatcher.find()) return compactMatcher.group(1)
         }
         return null
     }
@@ -106,6 +170,7 @@ class OrderScraperService : AccessibilityService() {
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .filterNot { isNoiseLine(it) }
+            .distinct()
 
         val total = filtered.firstOrNull {
             it.lowercase(Locale.ROOT).contains("total") && rmPattern.matcher(it).find()
@@ -119,6 +184,9 @@ class OrderScraperService : AccessibilityService() {
 
         if (items.isEmpty()) {
             items.addAll(extractGenericItems(filtered))
+        }
+        if (items.isEmpty()) {
+            items.addAll(extractNamePricePairs(filtered))
         }
 
         return ExtractionResult(items = items.distinctBy { "${it.name}|${it.quantity}|${it.price}" }, total = total)
@@ -176,6 +244,23 @@ class OrderScraperService : AccessibilityService() {
         return items
     }
 
+    private fun extractNamePricePairs(filtered: List<String>): List<OrderItem> {
+        val items = mutableListOf<OrderItem>()
+        for (index in 1 until filtered.size) {
+            val current = filtered[index]
+            if (!rmPattern.matcher(current).find()) continue
+            if (current.contains("total", true) || current.contains("subtotal", true)) continue
+
+            val nameCandidate = filtered[index - 1]
+            if (!looksLikeItemName(nameCandidate)) continue
+            val qty = parseQuantity(filtered.getOrNull(index + 1))
+                ?: parseQuantity(filtered.getOrNull(index - 2))
+                ?: 1
+            items.add(OrderItem(name = nameCandidate, quantity = qty, price = current))
+        }
+        return items
+    }
+
     private fun parseQuantity(line: String?): Int? {
         if (line.isNullOrBlank()) return null
         qtyPattern.matcher(line).let { if (it.find()) return it.group(1)?.toIntOrNull() }
@@ -213,5 +298,38 @@ class OrderScraperService : AccessibilityService() {
         val lower = line.lowercase(Locale.ROOT)
         if (lower.length <= 1) return true
         return noiseTokens.any { lower == it || lower.startsWith("$it ") }
+    }
+
+    private fun logExtractionSummary(
+        orderId: String,
+        packageName: String,
+        result: ExtractionResult,
+        allTexts: List<String>
+    ) {
+        val sampleItems = result.items.take(3).joinToString(" | ") {
+            "${it.name} x${it.quantity ?: "?"} @ ${it.price ?: "N/A"}"
+        }.ifBlank { "none" }
+        val textPreview = allTexts.take(5).joinToString(" || ").take(220)
+        Log.i(
+            "OrderScraper",
+            "Extraction summary: pkg=$packageName orderId=$orderId items=${result.items.size} total=${result.total ?: "N/A"} sample=$sampleItems preview=$textPreview"
+        )
+    }
+
+    private fun shouldSkipDueToStrictMode(orderId: String, result: ExtractionResult): Boolean {
+        val strictModeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_STRICT_MODE_ENABLED, true)
+        if (!strictModeEnabled) return false
+        if (orderId.isBlank() || orderId.startsWith("UNKNOWN-")) return true
+        if (result.items.isEmpty()) return true
+        if (result.total.isNullOrBlank()) return true
+        return false
+    }
+
+    private companion object {
+        private const val SCRAPE_DEBOUNCE_MS = 2000L
+        private const val MAX_TEXT_NODES = 3500
+        private const val PREFS = "relay_prefs"
+        private const val KEY_STRICT_MODE_ENABLED = "strict_mode_enabled"
     }
 }
