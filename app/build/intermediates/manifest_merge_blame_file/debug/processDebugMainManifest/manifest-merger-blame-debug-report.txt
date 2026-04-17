@@ -53,7 +53,7 @@
 32-->C:\Users\Acer\Desktop\Relay\app\src\main\AndroidManifest.xml:17:9-41
 33        android:supportsRtl="true"
 33-->C:\Users\Acer\Desktop\Relay\app\src\main\AndroidManifest.xml:18:9-35
-34        android:testOnly="false"
+34        android:testOnly="true"
 34-->C:\Users\Acer\Desktop\Relay\app\src\main\AndroidManifest.xml:19:9-33
 35        android:theme="@style/Theme.GastroPosRelay" >
 35-->C:\Users\Acer\Desktop\Relay\app\src\main\AndroidManifest.xml:20:9-52

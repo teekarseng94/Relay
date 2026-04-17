@@ -3,6 +3,7 @@ package com.gastropos.relay
 import android.app.Notification
 import android.content.BroadcastReceiver
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
@@ -12,6 +13,7 @@ import android.service.notification.StatusBarNotification
 import android.text.TextUtils
 import android.util.ArrayMap
 import android.util.Log
+import android.app.PendingIntent
 import java.util.Locale
 import java.util.regex.Pattern
 
@@ -70,6 +72,17 @@ class NotificationReceiverService : NotificationListenerService() {
         )
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Log.i("NotificationReceiver", "Notification listener connected")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.w("NotificationReceiver", "Notification listener disconnected, requesting rebind")
+        requestRebind(ComponentName(this, NotificationReceiverService::class.java))
+    }
+
     override fun onDestroy() {
         if (isTestReceiverRegistered) {
             unregisterReceiver(testNotificationReceiver)
@@ -81,27 +94,40 @@ class NotificationReceiverService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
-        if (!supportedPackages.contains(sbn.packageName)) return
+        val sourcePackage = resolveCanonicalSourcePackage(sbn.packageName)
+        if (sourcePackage == null) {
+            Log.d("NotificationReceiver", "Ignoring unsupported package: ${sbn.packageName}")
+            return
+        }
 
         val notification = sbn.notification ?: return
         val title = notification.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val text = notification.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
         val bigText = notification.extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
         val fullText = listOf(title, text, bigText).joinToString(" ").trim()
+        Log.i("NotificationReceiver", "Notification captured: pkg=${sbn.packageName} text=\"$fullText\"")
+
+        // Live-safe behavior:
+        // 1) default route by source package (Grab/Shopee app that sent the notification)
+        // 2) optionally override by keyword routing if a keyword match exists.
         val routingResult = resolveTargetPackageFromKeywords(fullText)
+        val targetPackage = routingResult?.packageName ?: sourcePackage
+        val matchedKeyword = routingResult?.matchedKeyword
 
         if (routingResult == null) {
-            persistLastRoute(type = "none", keyword = fullText)
-            Log.d("NotificationReceiver", "No routing keyword matched: $fullText")
-            return
+            Log.d(
+                "NotificationReceiver",
+                "No keyword match, using source package route: source=$sourcePackage"
+            )
         }
-        val targetPackage = routingResult.packageName
+
         persistLastRoute(
             type = if (targetPackage == GRAB_PACKAGE) "grab" else "shopee",
-            keyword = routingResult.matchedKeyword
+            keyword = matchedKeyword ?: "source-package"
         )
 
-        val orderId = extractOrderId(fullText) ?: "UNKNOWN-${System.currentTimeMillis()}"
+        val orderId = extractOrderId(fullText)
+            ?: "NOID-${targetPackage.hashCode()}-${fullText.lowercase(Locale.ROOT).hashCode()}"
         if (shouldDebounceNotification(targetPackage, orderId)) {
             Log.d("NotificationReceiver", "Debounced notification (${NOTIFICATION_DEBOUNCE_MS}ms): $orderId")
             return
@@ -121,7 +147,7 @@ class NotificationReceiverService : NotificationListenerService() {
         )
 
         if (addedToPending) {
-            launchMerchantApp(targetPackage)
+            launchMerchantOrderDetails(targetPackage, notification)
         } else {
             Log.w("NotificationReceiver", "Failed to enqueue pending order: $orderId")
         }
@@ -170,6 +196,16 @@ class NotificationReceiverService : NotificationListenerService() {
             .filter { it.isNotEmpty() }
     }
 
+    private fun resolveCanonicalSourcePackage(packageName: String): String? {
+        if (supportedPackages.contains(packageName)) return packageName
+        val lower = packageName.lowercase(Locale.ROOT)
+        return when {
+            lower.contains("grab") -> GRAB_PACKAGE
+            lower.contains("shopee") -> SHOPEE_PACKAGE
+            else -> null
+        }
+    }
+
     private fun persistLastRoute(type: String, keyword: String) {
         getSharedPreferences(PREFS, MODE_PRIVATE)
             .edit()
@@ -201,6 +237,32 @@ class NotificationReceiverService : NotificationListenerService() {
         } catch (e: SecurityException) {
             Log.e("NotificationReceiver", "SecurityException launching package=$packageName", e)
         }
+    }
+
+    private fun launchMerchantOrderDetails(packageName: String, notification: Notification) {
+        val contentIntent = notification.contentIntent
+        if (contentIntent != null) {
+            try {
+                contentIntent.send()
+                Log.i("NotificationReceiver", "Opened order details via notification contentIntent for $packageName")
+                return
+            } catch (e: PendingIntent.CanceledException) {
+                Log.w(
+                    "NotificationReceiver",
+                    "contentIntent canceled for $packageName, falling back to launcher",
+                    e
+                )
+            } catch (e: Exception) {
+                Log.w(
+                    "NotificationReceiver",
+                    "Failed to open contentIntent for $packageName, falling back to launcher",
+                    e
+                )
+            }
+        } else {
+            Log.w("NotificationReceiver", "No contentIntent found for $packageName notification")
+        }
+        launchMerchantApp(packageName)
     }
 
     private fun shouldDebounceNotification(packageName: String, orderId: String): Boolean {

@@ -29,10 +29,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         findViewById<Button>(R.id.testGrabButton).setOnClickListener {
-            sendTestNotificationBroadcast()
+            launchMerchantApp(GRAB_PACKAGE)
         }
         findViewById<Button>(R.id.testShopeeButton).setOnClickListener {
-            sendKeywordTestBroadcast("new order #9988")
+            launchMerchantApp(SHOPEE_PACKAGE)
         }
         grabKeywordsInput = findViewById(R.id.grabKeywordsInput)
         shopeeKeywordsInput = findViewById(R.id.shopeeKeywordsInput)
@@ -103,18 +103,25 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun sendTestNotificationBroadcast() {
-        sendBroadcast(Intent(ACTION_TEST_NOTIFICATION).setPackage(packageName))
-        Toast.makeText(this, R.string.test_broadcast_sent, Toast.LENGTH_SHORT).show()
-    }
+    private fun launchMerchantApp(packageName: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        } ?: Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            setPackage(packageName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
 
-    private fun sendKeywordTestBroadcast(text: String) {
-        sendBroadcast(
-            Intent(ACTION_TEST_KEYWORD)
-                .setPackage(packageName)
-                .putExtra(EXTRA_TEST_TEXT, text)
-        )
-        Toast.makeText(this, R.string.test_broadcast_sent, Toast.LENGTH_SHORT).show()
+        val resolved = launchIntent.resolveActivity(packageManager)
+        if (resolved == null) {
+            Toast.makeText(this, getString(R.string.test_launch_failed, packageName), Toast.LENGTH_SHORT).show()
+            Log.e("MainActivity", "Cannot resolve launch activity for package=$packageName")
+            return
+        }
+
+        startActivity(launchIntent)
+        Toast.makeText(this, getString(R.string.test_launch_success, packageName), Toast.LENGTH_SHORT).show()
+        Log.i("MainActivity", "Manual test launch sent for package=$packageName via $resolved")
     }
 
     private fun loadKeywordRoutingSettings() {
@@ -186,8 +193,7 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_STRICT_MODE_ENABLED = "strict_mode_enabled"
         private const val DEFAULT_GRAB_KEYWORDS = "GF, Grab"
         private const val DEFAULT_SHOPEE_KEYWORDS = "#, New order, Order ID"
-        private const val ACTION_TEST_NOTIFICATION = "com.gastropos.relay.TEST_NOTIFICATION"
-        private const val ACTION_TEST_KEYWORD = "com.gastropos.relay.TEST_KEYWORD"
-        private const val EXTRA_TEST_TEXT = "text"
+        private const val GRAB_PACKAGE = "com.grab.merchant"
+        private const val SHOPEE_PACKAGE = "com.shopeepay.merchant.my"
     }
 }

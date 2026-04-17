@@ -3865,7 +3865,9 @@ int string strict_mode_hint 0x7f0e00c0
 int string strict_mode_label 0x7f0e00c1
 int string test_broadcast_sent 0x7f0e00c2
 int string test_grab_button 0x7f0e00c3
-int string test_shopee_button 0x7f0e00c4
+int string test_launch_failed 0x7f0e00c4
+int string test_launch_success 0x7f0e00c5
+int string test_shopee_button 0x7f0e00c6
 int style AlertDialog_AppCompat 0x7f0f0000
 int style AlertDialog_AppCompat_Light 0x7f0f0001
 int style Animation_AppCompat_Dialog 0x7f0f0002

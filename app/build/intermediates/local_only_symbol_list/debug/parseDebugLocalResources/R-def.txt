@@ -48,6 +48,8 @@ string strict_mode_hint
 string strict_mode_label
 string test_broadcast_sent
 string test_grab_button
+string test_launch_failed
+string test_launch_success
 string test_shopee_button
 style Theme.GastroPosRelay
 xml accessibility_config

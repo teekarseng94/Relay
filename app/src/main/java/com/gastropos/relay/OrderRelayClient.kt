@@ -3,8 +3,6 @@ package com.gastropos.relay
 import android.os.Looper
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.Call
-import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -70,34 +68,51 @@ object OrderRelayClient {
                     )
                     .build()
 
-                client.newCall(request).enqueue(object : Callback {
-                    override fun onFailure(call: Call, e: java.io.IOException) {
+                var lastError: Throwable? = null
+                for (attempt in 1..MAX_UPLOAD_ATTEMPTS) {
+                    try {
+                        client.newCall(request).execute().use { response: Response ->
+                            if (response.isSuccessful) {
+                                if (response.code == 200) {
+                                    Log.i(TAG, "200 OK received for order ${payload.orderId} (attempt=$attempt)")
+                                } else {
+                                    Log.i(TAG, "Upload success for order ${payload.orderId} (attempt=$attempt)")
+                                }
+                                return@execute
+                            }
+
+                            val responseBody = response.body?.string().orEmpty()
+                            Log.e(
+                                TAG,
+                                "Upload failed for ${payload.orderId}: HTTP ${response.code}, attempt=$attempt, body=$responseBody"
+                            )
+                            lastError = IllegalStateException("HTTP ${response.code}")
+                        }
+                    } catch (e: Exception) {
+                        lastError = e
                         Log.e(
                             TAG,
-                            "Network failure uploading order ${payload.orderId} to $RELAY_URL: ${e.message}",
+                            "Network failure uploading order ${payload.orderId} on attempt=$attempt: ${e.message}",
                             e
                         )
                     }
 
-                    override fun onResponse(call: Call, response: Response) {
-                        response.use {
-                            if (!it.isSuccessful) {
-                                val responseBody = it.body?.string().orEmpty()
-                                Log.e(
-                                    TAG,
-                                    "Upload failed for ${payload.orderId}: HTTP ${it.code}, body=$responseBody"
-                                )
-                            } else if (it.code == 200) {
-                                Log.i(TAG, "200 OK received for order ${payload.orderId}")
-                            } else {
-                                Log.i(TAG, "Upload success for order ${payload.orderId}")
-                            }
+                    if (attempt < MAX_UPLOAD_ATTEMPTS) {
+                        try {
+                            Thread.sleep(RETRY_DELAYS_MS[attempt - 1])
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
                         }
                     }
-                })
+                }
+                Log.e(TAG, "All upload attempts failed for order ${payload.orderId}", lastError)
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to upload order payload", error)
             }
         }
     }
+
+    private const val MAX_UPLOAD_ATTEMPTS = 3
+    private val RETRY_DELAYS_MS = longArrayOf(1500L, 3000L)
 }
