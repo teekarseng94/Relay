@@ -90,10 +90,6 @@ class OrderScraperService : AccessibilityService() {
         windowManager = wm
 
         val overlayView = LayoutInflater.from(this).inflate(R.layout.floating_sync_button, null)
-        overlayView.findViewById<ImageButton>(R.id.syncButton)?.setOnClickListener {
-            triggerManualSync()
-        }
-
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -105,6 +101,9 @@ class OrderScraperService : AccessibilityService() {
             gravity = Gravity.TOP or Gravity.END
             x = 32
             y = 220
+        }
+        overlayView.findViewById<ImageButton>(R.id.syncButton)?.setOnClickListener {
+            triggerManualSync()
         }
 
         try {
