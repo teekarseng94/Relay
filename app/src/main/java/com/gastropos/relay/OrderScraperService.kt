@@ -1,11 +1,18 @@
 package com.gastropos.relay
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.os.SystemClock
 import android.util.ArrayMap
 import android.util.Log
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.ImageButton
+import android.widget.Toast
 import java.util.Locale
 import java.util.regex.Pattern
 
@@ -29,6 +36,8 @@ class OrderScraperService : AccessibilityService() {
 
     private val scrapeDebounceLock = Any()
     private val lastScrapeElapsedByWindow = ArrayMap<String, Long>()
+    private var windowManager: WindowManager? = null
+    private var floatingSyncButton: View? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +47,7 @@ class OrderScraperService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.i("OrderScraper", "Service successfully connected and visible")
+        setupFloatingSyncButton()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -62,6 +72,92 @@ class OrderScraperService : AccessibilityService() {
         }
 
         val root = rootInActiveWindow ?: return
+        scrapeAndSend(root, packageName, pending, isManualTrigger = false)
+    }
+
+    override fun onInterrupt() {
+        Log.w("OrderScraper", "Accessibility service interrupted")
+    }
+
+    override fun onDestroy() {
+        removeFloatingSyncButton()
+        super.onDestroy()
+    }
+
+    private fun setupFloatingSyncButton() {
+        if (floatingSyncButton != null) return
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        windowManager = wm
+
+        val overlayView = LayoutInflater.from(this).inflate(R.layout.floating_sync_button, null)
+        overlayView.findViewById<ImageButton>(R.id.syncButton)?.setOnClickListener {
+            triggerManualSync()
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            android.graphics.PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = 32
+            y = 220
+        }
+
+        try {
+            wm.addView(overlayView, params)
+            floatingSyncButton = overlayView
+        } catch (e: Exception) {
+            Log.e("OrderScraper", "Failed to attach floating sync button", e)
+        }
+    }
+
+    private fun removeFloatingSyncButton() {
+        val wm = windowManager ?: return
+        val view = floatingSyncButton ?: return
+        try {
+            wm.removeView(view)
+        } catch (e: Exception) {
+            Log.w("OrderScraper", "Failed to remove floating sync button", e)
+        } finally {
+            floatingSyncButton = null
+        }
+    }
+
+    private fun triggerManualSync() {
+        val root = rootInActiveWindow
+        if (root == null) {
+            Toast.makeText(this, "No active merchant screen to sync.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val packageName = root.packageName?.toString()
+        if (packageName.isNullOrBlank() || !supportedPackages.contains(packageName)) {
+            root.recycle()
+            Toast.makeText(this, "Sync is only available in Grab/Shopee merchant apps.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val pending = OrderRepository.getPending(packageName)
+        if (pending == null) {
+            root.recycle()
+            Toast.makeText(this, "No pending order to sync.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, "Sync triggered. Sending latest order data...", Toast.LENGTH_SHORT).show()
+        scrapeAndSend(root, packageName, pending, isManualTrigger = true)
+    }
+
+    private fun scrapeAndSend(
+        root: AccessibilityNodeInfo,
+        packageName: String,
+        pending: OrderRepository.PendingOrder,
+        isManualTrigger: Boolean
+    ) {
         try {
             val allTexts = mutableListOf<String>()
             collectTextsRecursive(root, allTexts)
@@ -97,14 +193,17 @@ class OrderScraperService : AccessibilityService() {
 
             OrderRepository.markProcessed(this, scrapedOrderId)
             OrderRelayClient.send(payload)
-            Log.i("OrderScraper", "Scraped and uploaded order $scrapedOrderId")
+            Log.i(
+                "OrderScraper",
+                if (isManualTrigger) {
+                    "Manually scraped and uploaded order $scrapedOrderId"
+                } else {
+                    "Scraped and uploaded order $scrapedOrderId"
+                }
+            )
         } finally {
             root.recycle()
         }
-    }
-
-    override fun onInterrupt() {
-        Log.w("OrderScraper", "Accessibility service interrupted")
     }
 
     private fun shouldDebounceScrape(packageName: String, windowId: Int): Boolean {
