@@ -139,5 +139,12 @@
         android:layout_marginTop="8dp"
         android:text="@string/test_shopee_button" />
 
+    <Button
+        android:id="@+id/openManualScraperPageButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/open_manual_scraper_page" />
+
     </LinearLayout>
 </ScrollView>

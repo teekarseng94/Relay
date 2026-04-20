@@ -1,7 +1,13 @@
 package com.gastropos.relay
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.ArrayMap
 import android.util.Log
@@ -9,6 +15,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.view.HapticFeedbackConstants
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.ImageButton
@@ -29,6 +36,9 @@ class OrderScraperService : AccessibilityService() {
         Pattern.CASE_INSENSITIVE
     )
     private val compactOrderIdPattern = Pattern.compile("#([A-Za-z0-9-]{4,})")
+    private val invalidOrderIdTokens = setOf(
+        "prepared", "accepted", "ready", "pickup", "delivery", "order", "pesanan"
+    )
     private val noiseTokens = setOf(
         "accept", "reject", "chat", "call", "delivery", "pickup", "driver",
         "back", "home", "help", "support", "view all", "history"
@@ -38,9 +48,19 @@ class OrderScraperService : AccessibilityService() {
     private val lastScrapeElapsedByWindow = ArrayMap<String, Long>()
     private var windowManager: WindowManager? = null
     private var floatingSyncButton: View? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var manualReceiverRegistered = false
+    private val manualSyncReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ManualScraperActivity.ACTION_MANUAL_SCRAPE) return
+            val result = triggerManualSync()
+            dispatchManualSyncResult(result)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
+        registerManualSyncReceiver()
         Log.i("OrderScraper", "Service Created")
     }
 
@@ -72,7 +92,13 @@ class OrderScraperService : AccessibilityService() {
         }
 
         val root = rootInActiveWindow ?: return
-        scrapeAndSend(root, packageName, pending, isManualTrigger = false)
+        scrapeAndSend(
+            root = root,
+            packageName = packageName,
+            source = pending.source,
+            fallbackOrderId = pending.orderId,
+            isManualTrigger = false
+        )
     }
 
     override fun onInterrupt() {
@@ -80,6 +106,7 @@ class OrderScraperService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        unregisterManualSyncReceiver()
         removeFloatingSyncButton()
         super.onDestroy()
     }
@@ -102,8 +129,26 @@ class OrderScraperService : AccessibilityService() {
             x = 32
             y = 220
         }
-        overlayView.findViewById<ImageButton>(R.id.syncButton)?.setOnClickListener {
-            triggerManualSync()
+        overlayView.findViewById<ImageButton>(R.id.syncButton)?.setOnClickListener { button ->
+            button.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            button.isEnabled = false
+            button.alpha = 0.55f
+            Toast.makeText(this, "Sync button pressed. Scraping now...", Toast.LENGTH_SHORT).show()
+            val result = triggerManualSync()
+            dispatchManualSyncResult(result)
+            Toast.makeText(
+                this,
+                if (result.success) {
+                    "Sync successful. ${result.message}"
+                } else {
+                    "Sync failed. ${result.message}"
+                },
+                Toast.LENGTH_LONG
+            ).show()
+            mainHandler.postDelayed({
+                button.isEnabled = true
+                button.alpha = 1.0f
+            }, SYNC_BUTTON_REENABLE_DELAY_MS)
         }
 
         try {
@@ -126,83 +171,140 @@ class OrderScraperService : AccessibilityService() {
         }
     }
 
-    private fun triggerManualSync() {
+    private fun triggerManualSync(): ManualSyncResult {
         val root = rootInActiveWindow
         if (root == null) {
-            Toast.makeText(this, "No active merchant screen to sync.", Toast.LENGTH_SHORT).show()
-            return
+            val message = "No active merchant screen to sync."
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            OrderRelayClient.recordScrapeFailure(this, message)
+            return ManualSyncResult(success = false, message = message)
         }
 
         val packageName = root.packageName?.toString()
         if (packageName.isNullOrBlank() || !supportedPackages.contains(packageName)) {
             root.recycle()
-            Toast.makeText(this, "Sync is only available in Grab/Shopee merchant apps.", Toast.LENGTH_SHORT).show()
-            return
+            val message = "Sync is only available in Grab/Shopee merchant apps."
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            OrderRelayClient.recordScrapeFailure(this, message)
+            return ManualSyncResult(success = false, message = message)
         }
 
-        val pending = OrderRepository.getPending(packageName)
-        if (pending == null) {
-            root.recycle()
-            Toast.makeText(this, "No pending order to sync.", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val source = sourceFromPackage(packageName)
 
         Toast.makeText(this, "Sync triggered. Sending latest order data...", Toast.LENGTH_SHORT).show()
-        scrapeAndSend(root, packageName, pending, isManualTrigger = true)
+        val scrapeResult = scrapeAndSend(
+            root = root,
+            packageName = packageName,
+            source = source,
+            fallbackOrderId = null,
+            isManualTrigger = true
+        )
+        if (!scrapeResult.success) {
+            OrderRelayClient.recordScrapeFailure(this, scrapeResult.message)
+        }
+        return ManualSyncResult(success = scrapeResult.success, message = scrapeResult.message)
     }
 
     private fun scrapeAndSend(
         root: AccessibilityNodeInfo,
         packageName: String,
-        pending: OrderRepository.PendingOrder,
+        source: String,
+        fallbackOrderId: String?,
         isManualTrigger: Boolean
-    ) {
+    ): ScrapeSendResult {
         try {
             val allTexts = mutableListOf<String>()
             collectTextsRecursive(root, allTexts)
-            if (allTexts.isEmpty()) return
+            if (allTexts.isEmpty()) return ScrapeSendResult(false, "No visible text found on current screen.")
             Log.d("OrderScraper", "Collected ${allTexts.size} text nodes for $packageName")
 
-            val scrapedOrderId = findOrderId(allTexts) ?: pending.orderId
-            if (OrderRepository.isAlreadyProcessed(this, scrapedOrderId)) return
+            val scrapedOrderId = findOrderId(allTexts)
+                ?: fallbackOrderId
+                ?: "MANUAL-${System.currentTimeMillis()}"
+            val finalOrderId = if (isManualTrigger && OrderRepository.isAlreadyProcessed(this, scrapedOrderId)) {
+                // Manual sync should still proceed even when a stale/ambiguous ID was seen before.
+                "MANUAL-${System.currentTimeMillis()}"
+            } else {
+                scrapedOrderId
+            }
+            if (!isManualTrigger && OrderRepository.isAlreadyProcessed(this, finalOrderId)) {
+                return ScrapeSendResult(false, "Order already processed: $finalOrderId")
+            }
 
             val result = extractItemsAndTotal(allTexts, packageName)
             logExtractionSummary(scrapedOrderId, packageName, result, allTexts)
             if (shouldSkipDueToStrictMode(scrapedOrderId, result)) {
                 Log.w(
                     "OrderScraper",
-                    "Strict mode skipped upload: orderId=$scrapedOrderId items=${result.items.size} total=${result.total ?: "N/A"}"
+                    "Strict mode skipped upload: orderId=$finalOrderId items=${result.items.size} total=${result.total ?: "N/A"}"
                 )
-                return
+                return ScrapeSendResult(
+                    false,
+                    "Strict mode skipped upload. Ensure order ID, items, and total are visible."
+                )
             }
             if (result.items.isEmpty()) {
                 Log.d("OrderScraper", "No item rows found yet, waiting for more UI updates.")
-                return
+                return ScrapeSendResult(false, "No item rows detected yet on this screen.")
             }
 
             val payload = RelayOrderPayload(
-                source = pending.source,
+                source = source,
                 sourcePackage = packageName,
-                orderId = scrapedOrderId,
+                orderId = finalOrderId,
                 total = result.total,
                 items = result.items,
                 rawTexts = allTexts,
                 scrapedAtEpochMs = System.currentTimeMillis()
             )
 
-            OrderRepository.markProcessed(this, scrapedOrderId)
-            OrderRelayClient.send(payload)
+            OrderRepository.markProcessed(this, finalOrderId)
+            OrderRelayClient.send(this, payload)
             Log.i(
                 "OrderScraper",
                 if (isManualTrigger) {
-                    "Manually scraped and uploaded order $scrapedOrderId"
+                    "Manually scraped and uploaded order $finalOrderId"
                 } else {
-                    "Scraped and uploaded order $scrapedOrderId"
+                    "Scraped and uploaded order $finalOrderId"
                 }
             )
+            return ScrapeSendResult(true, "Scraped and uploaded order $finalOrderId")
         } finally {
             root.recycle()
         }
+    }
+
+    private fun registerManualSyncReceiver() {
+        if (manualReceiverRegistered) return
+        val filter = IntentFilter(ManualScraperActivity.ACTION_MANUAL_SCRAPE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(manualSyncReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(manualSyncReceiver, filter)
+        }
+        manualReceiverRegistered = true
+        Log.i("OrderScraper", "Manual sync receiver registered")
+    }
+
+    private fun unregisterManualSyncReceiver() {
+        if (!manualReceiverRegistered) return
+        unregisterReceiver(manualSyncReceiver)
+        manualReceiverRegistered = false
+        Log.i("OrderScraper", "Manual sync receiver unregistered")
+    }
+
+    private fun dispatchManualSyncResult(result: ManualSyncResult) {
+        sendBroadcast(
+            Intent(ManualScraperActivity.ACTION_MANUAL_SCRAPE_RESULT).apply {
+                `package` = packageName
+                putExtra(ManualScraperActivity.EXTRA_SUCCESS, result.success)
+                putExtra(ManualScraperActivity.EXTRA_MESSAGE, result.message)
+            }
+        )
+    }
+
+    private fun sourceFromPackage(packageName: String): String {
+        return if (packageName.contains("grab", ignoreCase = true)) "grab" else "shopee"
     }
 
     private fun shouldDebounceScrape(packageName: String, windowId: Int): Boolean {
@@ -251,11 +353,26 @@ class OrderScraperService : AccessibilityService() {
     private fun findOrderId(lines: List<String>): String? {
         lines.forEach { line ->
             val matcher = orderIdPattern.matcher(line)
-            if (matcher.find()) return matcher.group(1)
+            if (matcher.find()) {
+                val candidate = matcher.group(1) ?: return@forEach
+                val sanitized = sanitizeOrderId(candidate) ?: return@forEach
+                return sanitized
+            }
             val compactMatcher = compactOrderIdPattern.matcher(line)
-            if (compactMatcher.find()) return compactMatcher.group(1)
+            if (compactMatcher.find()) {
+                val candidate = compactMatcher.group(1) ?: return@forEach
+                val sanitized = sanitizeOrderId(candidate) ?: return@forEach
+                return sanitized
+            }
         }
         return null
+    }
+
+    private fun sanitizeOrderId(value: String): String? {
+        val normalized = value.trim().lowercase(Locale.ROOT)
+        if (normalized.isBlank()) return null
+        if (normalized in invalidOrderIdTokens) return null
+        return value.trim()
     }
 
     private data class ExtractionResult(
@@ -424,9 +541,20 @@ class OrderScraperService : AccessibilityService() {
         return false
     }
 
+    private data class ManualSyncResult(
+        val success: Boolean,
+        val message: String
+    )
+
+    private data class ScrapeSendResult(
+        val success: Boolean,
+        val message: String
+    )
+
     private companion object {
         private const val SCRAPE_DEBOUNCE_MS = 2000L
         private const val MAX_TEXT_NODES = 3500
+        private const val SYNC_BUTTON_REENABLE_DELAY_MS = 1000L
         private const val PREFS = "relay_prefs"
         private const val KEY_STRICT_MODE_ENABLED = "strict_mode_enabled"
     }

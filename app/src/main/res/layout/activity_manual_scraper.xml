@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/manualScraperIntro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/manual_scraper_intro" />
+
+        <Button
+            android:id="@+id/manualScraperTriggerButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/manual_scraper_trigger_button" />
+
+        <Button
+            android:id="@+id/manualScraperOpenGrabButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/manual_scraper_open_grab_button" />
+
+        <Button
+            android:id="@+id/manualScraperOpenShopeeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/manual_scraper_open_shopee_button" />
+
+        <TextView
+            android:id="@+id/manualScraperStatusLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/manual_scraper_status_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperStatusValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/manual_scraper_status_idle" />
+
+        <TextView
+            android:id="@+id/manualScraperMessageLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/manual_scraper_result_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperMessageValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/manual_scraper_waiting_result" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/manual_scraper_upload_title"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadUrlLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/manual_scraper_upload_url_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadUrlValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/manual_scraper_upload_not_available" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadTimeLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/manual_scraper_upload_time_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadTimeValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/manual_scraper_upload_not_available" />
+
+        <TextView
+            android:id="@+id/manualScraperFirestoreIdLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/manual_scraper_firestore_id_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperFirestoreIdValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/manual_scraper_upload_not_available" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadStatusLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/manual_scraper_upload_status_label"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/manualScraperUploadStatusValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/manual_scraper_upload_not_available" />
+    </LinearLayout>
+</ScrollView>

@@ -34,6 +34,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.testShopeeButton).setOnClickListener {
             launchMerchantApp(SHOPEE_PACKAGE)
         }
+        findViewById<Button>(R.id.openManualScraperPageButton).setOnClickListener {
+            startActivity(Intent(this, ManualScraperActivity::class.java))
+        }
         grabKeywordsInput = findViewById(R.id.grabKeywordsInput)
         shopeeKeywordsInput = findViewById(R.id.shopeeKeywordsInput)
         lastRouteValue = findViewById(R.id.lastRouteValue)

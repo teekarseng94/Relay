@@ -4,7 +4,7 @@
             "outputFile": "com.gastropos.relay.app-mergeDebugResources-29:/values-v16/values-v16.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Acer\\.gradle\\caches\\9.0.0\\transforms\\03fd21aaeb84539b7956810531e4e814\\transformed\\appcompat-1.7.0\\res\\values-v16\\values-v16.xml",
+                    "source": "C:\\Users\\User\\.gradle\\caches\\9.0.0\\transforms\\03fd21aaeb84539b7956810531e4e814\\transformed\\appcompat-1.7.0\\res\\values-v16\\values-v16.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
