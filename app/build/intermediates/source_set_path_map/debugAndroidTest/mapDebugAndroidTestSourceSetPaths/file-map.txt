@@ -1,0 +1,4 @@
+com.gastropos.relay.test.app-androidTest-0 C:\Users\Acer\Documents\GitHub\Relay\app\build\generated\res\resValues\androidTest\debug
+com.gastropos.relay.test.app-mergeDebugAndroidTestResources-1 C:\Users\Acer\Documents\GitHub\Relay\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
+com.gastropos.relay.test.app-mergeDebugAndroidTestResources-2 C:\Users\Acer\Documents\GitHub\Relay\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
+com.gastropos.relay.test.app-debugAndroidTest-3 C:\Users\Acer\Documents\GitHub\Relay\app\build\intermediates\merged_res\debugAndroidTest\mergeDebugAndroidTestResources
