@@ -9,187 +9,187 @@
 9        android:targetSdkVersion="34" />
 10
 11    <uses-permission android:name="android.permission.INTERNET" />
-11-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:5:5-67
-11-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:5:22-64
+11-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:5:5-67
+11-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:5:22-64
 12    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-12-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:6:5-78
-12-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:6:22-75
+12-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:6:5-78
+12-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:6:22-75
 13    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-13-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:7:5-77
-13-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:7:22-74
+13-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:7:5-77
+13-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:7:22-74
 14
 15    <queries>
-15-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:9:5-12:15
+15-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:9:5-12:15
 16        <package android:name="com.grab.merchant" />
-16-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:10:9-53
-16-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:10:18-50
+16-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:10:9-53
+16-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:10:18-50
 17        <package android:name="com.shopeepay.merchant.my" />
-17-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:11:9-61
-17-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:11:18-58
+17-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:11:9-61
+17-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:11:18-58
 18    </queries>
 19
 20    <permission
-20-->[androidx.core:core:1.13.1] C:\Users\User\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:22:5-24:47
+20-->[androidx.core:core:1.13.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:22:5-24:47
 21        android:name="com.gastropos.relay.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-21-->[androidx.core:core:1.13.1] C:\Users\User\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:23:9-81
+21-->[androidx.core:core:1.13.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:23:9-81
 22        android:protectionLevel="signature" />
-22-->[androidx.core:core:1.13.1] C:\Users\User\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:24:9-44
+22-->[androidx.core:core:1.13.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:24:9-44
 23
 24    <uses-permission android:name="com.gastropos.relay.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
-24-->[androidx.core:core:1.13.1] C:\Users\User\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:26:5-97
-24-->[androidx.core:core:1.13.1] C:\Users\User\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:26:22-94
+24-->[androidx.core:core:1.13.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:26:5-97
+24-->[androidx.core:core:1.13.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:26:22-94
 25
 26    <application
-26-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:14:5-59:19
+26-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:14:5-59:19
 27        android:allowBackup="true"
-27-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:15:9-35
+27-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:15:9-35
 28        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
-28-->[androidx.core:core:1.13.1] C:\Users\User\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:28:18-86
+28-->[androidx.core:core:1.13.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\d748e58f66ec63acdba4e0c57e950ee6\transformed\core-1.13.1\AndroidManifest.xml:28:18-86
 29        android:debuggable="true"
 30        android:extractNativeLibs="false"
 31        android:icon="@android:drawable/sym_def_app_icon"
-31-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:16:9-58
+31-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:16:9-58
 32        android:label="@string/app_name"
-32-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:17:9-41
+32-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:17:9-41
 33        android:supportsRtl="true"
-33-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:18:9-35
+33-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:18:9-35
 34        android:testOnly="true"
-34-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:19:9-33
+34-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:19:9-33
 35        android:theme="@style/Theme.GastroPosRelay" >
-35-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:20:9-52
+35-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:20:9-52
 36        <activity
-36-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:23:9-30:20
+36-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:23:9-30:20
 37            android:name="com.gastropos.relay.MainActivity"
-37-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:24:13-41
+37-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:24:13-41
 38            android:exported="true" >
-38-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:25:13-36
+38-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:25:13-36
 39            <intent-filter>
-39-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:26:13-29:29
+39-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:26:13-29:29
 40                <action android:name="android.intent.action.MAIN" />
-40-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:27:17-69
-40-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:27:25-66
+40-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:27:17-69
+40-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:27:25-66
 41
 42                <category android:name="android.intent.category.LAUNCHER" />
-42-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:28:17-77
-42-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:28:27-74
+42-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:28:17-77
+42-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:28:27-74
 43            </intent-filter>
 44        </activity>
 45        <activity
-45-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:31:9-33:40
+45-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:31:9-33:40
 46            android:name="com.gastropos.relay.ManualScraperActivity"
-46-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:32:13-50
+46-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:32:13-50
 47            android:exported="false" />
-47-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:33:13-37
+47-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:33:13-37
 48
 49        <service
-49-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:35:9-49:19
+49-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:35:9-49:19
 50            android:name="com.gastropos.relay.OrderScraperService"
-50-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:36:13-48
+50-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:36:13-48
 51            android:description="@string/accessibility_description"
-51-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:38:13-68
+51-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:38:13-68
 52            android:directBootAware="true"
-52-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:40:13-43
+52-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:40:13-43
 53            android:enabled="true"
-53-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:39:13-35
+53-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:39:13-35
 54            android:exported="true"
-54-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:42:13-36
+54-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:42:13-36
 55            android:label="@string/accessibility_service_label"
-55-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:37:13-64
+55-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:37:13-64
 56            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
-56-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:41:13-79
+56-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:41:13-79
 57            <intent-filter>
-57-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:43:13-45:29
+57-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:43:13-45:29
 58                <action android:name="android.accessibilityservice.AccessibilityService" />
-58-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:44:17-92
-58-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:44:25-89
+58-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:44:17-92
+58-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:44:25-89
 59            </intent-filter>
 60
 61            <meta-data
-61-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:46:13-48:64
+61-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:46:13-48:64
 62                android:name="android.accessibilityservice"
-62-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:47:17-60
+62-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:47:17-60
 63                android:resource="@xml/accessibility_config" />
-63-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:48:17-61
+63-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:48:17-61
 64        </service>
 65        <service
-65-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:51:9-58:19
+65-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:51:9-58:19
 66            android:name="com.gastropos.relay.NotificationReceiverService"
-66-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:52:13-56
+66-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:52:13-56
 67            android:exported="true"
-67-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:54:13-36
+67-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:54:13-36
 68            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" >
-68-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:53:13-87
+68-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:53:13-87
 69            <intent-filter>
-69-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:55:13-57:29
+69-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:55:13-57:29
 70                <action android:name="android.service.notification.NotificationListenerService" />
-70-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:56:17-99
-70-->D:\GitHub\Relay\app\src\main\AndroidManifest.xml:56:25-96
+70-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:56:17-99
+70-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:56:25-96
 71            </intent-filter>
 72        </service>
 73
 74        <provider
-74-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+74-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
 75            android:name="androidx.startup.InitializationProvider"
-75-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
+75-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
 76            android:authorities="com.gastropos.relay.androidx-startup"
-76-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
+76-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
 77            android:exported="false" >
-77-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
+77-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
 78            <meta-data
-78-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+78-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
 79                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-79-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
+79-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
 80                android:value="androidx.startup" />
-80-->[androidx.emoji2:emoji2:1.3.0] C:\Users\User\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
+80-->[androidx.emoji2:emoji2:1.3.0] C:\Users\Acer\.gradle\caches\9.0.0\transforms\9403abc4a3fdeb58024ac1826c3dd55f\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
 81            <meta-data
-81-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\User\.gradle\caches\9.0.0\transforms\4f090b07b357103a4928320ee41b14dd\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
+81-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\Acer\.gradle\caches\9.0.0\transforms\4f090b07b357103a4928320ee41b14dd\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
 82                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-82-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\User\.gradle\caches\9.0.0\transforms\4f090b07b357103a4928320ee41b14dd\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
+82-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\Acer\.gradle\caches\9.0.0\transforms\4f090b07b357103a4928320ee41b14dd\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
 83                android:value="androidx.startup" />
-83-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\User\.gradle\caches\9.0.0\transforms\4f090b07b357103a4928320ee41b14dd\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
+83-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\Acer\.gradle\caches\9.0.0\transforms\4f090b07b357103a4928320ee41b14dd\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
 84            <meta-data
-84-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+84-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
 85                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-85-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+85-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
 86                android:value="androidx.startup" />
-86-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+86-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
 87        </provider>
 88
 89        <receiver
-89-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+89-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
 90            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-90-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+90-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
 91            android:directBootAware="false"
-91-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+91-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
 92            android:enabled="true"
-92-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+92-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
 93            android:exported="true"
-93-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+93-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
 94            android:permission="android.permission.DUMP" >
-94-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+94-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
 95            <intent-filter>
-95-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+95-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
 96                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
-96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
 97            </intent-filter>
 98            <intent-filter>
-98-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+98-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
 99                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
-99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
 100            </intent-filter>
 101            <intent-filter>
-101-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+101-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
 102                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-102-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
-102-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+102-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+102-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
 103            </intent-filter>
 104            <intent-filter>
-104-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+104-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
 105                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
-105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\User\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\Acer\.gradle\caches\9.0.0\transforms\6c6317ab08d1dff7d2fcc9c8f4b6b9e6\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
 106            </intent-filter>
 107        </receiver>
 108    </application>

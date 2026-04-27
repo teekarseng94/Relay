@@ -231,16 +231,21 @@ class OrderScraperService : AccessibilityService() {
                 return ScrapeSendResult(false, "Order already processed: $finalOrderId")
             }
 
-            val result = extractItemsAndTotal(allTexts, packageName)
+            var result = extractItemsAndTotal(allTexts, packageName)
+            result = maybeBuildGrabFallbackItems(result, allTexts, packageName)
             logExtractionSummary(scrapedOrderId, packageName, result, allTexts)
-            if (shouldSkipDueToStrictMode(scrapedOrderId, result)) {
+            if (shouldSkipDueToStrictMode(scrapedOrderId, packageName, result)) {
                 Log.w(
                     "OrderScraper",
                     "Strict mode skipped upload: orderId=$finalOrderId items=${result.items.size} total=${result.total ?: "N/A"}"
                 )
                 return ScrapeSendResult(
                     false,
-                    "Strict mode skipped upload. Ensure order ID, items, and total are visible."
+                    if (packageName.contains("grab", ignoreCase = true)) {
+                        "Strict mode skipped upload. Ensure order ID and items are visible."
+                    } else {
+                        "Strict mode skipped upload. Ensure order ID, items, and total are visible."
+                    }
                 )
             }
             if (result.items.isEmpty()) {
@@ -407,6 +412,48 @@ class OrderScraperService : AccessibilityService() {
         return ExtractionResult(items = items.distinctBy { "${it.name}|${it.quantity}|${it.price}" }, total = total)
     }
 
+    private fun maybeBuildGrabFallbackItems(
+        result: ExtractionResult,
+        lines: List<String>,
+        packageName: String
+    ): ExtractionResult {
+        if (!packageName.contains("grab", ignoreCase = true)) return result
+        if (result.items.isNotEmpty()) return result
+
+        val filtered = lines
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filterNot { isNoiseLine(it) }
+            .distinct()
+
+        val nameCandidate = filtered.firstOrNull { line ->
+            !rmPattern.matcher(line).find() &&
+                parseQuantity(line) == null &&
+                !line.contains("order", true) &&
+                !line.contains("pesanan", true) &&
+                !line.contains("total", true) &&
+                line.length in 2..70
+        } ?: "Grab Item"
+
+        val qtyCandidate = filtered.asSequence()
+            .mapNotNull { parseQuantity(it) }
+            .firstOrNull() ?: 1
+
+        val priceCandidate = result.total ?: filtered.firstOrNull {
+            rmPattern.matcher(it).find() && !it.contains("total", true)
+        }
+
+        return result.copy(
+            items = listOf(
+                OrderItem(
+                    name = nameCandidate,
+                    quantity = qtyCandidate,
+                    price = priceCandidate
+                )
+            )
+        )
+    }
+
     private fun extractGrabItems(filtered: List<String>): List<OrderItem> {
         val items = mutableListOf<OrderItem>()
         for (index in filtered.indices) {
@@ -531,13 +578,20 @@ class OrderScraperService : AccessibilityService() {
         )
     }
 
-    private fun shouldSkipDueToStrictMode(orderId: String, result: ExtractionResult): Boolean {
+    private fun shouldSkipDueToStrictMode(
+        orderId: String,
+        packageName: String,
+        result: ExtractionResult
+    ): Boolean {
         val strictModeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_STRICT_MODE_ENABLED, true)
         if (!strictModeEnabled) return false
         if (orderId.isBlank() || orderId.startsWith("UNKNOWN-")) return true
         if (result.items.isEmpty()) return true
-        if (result.total.isNullOrBlank()) return true
+        val isGrabPackage = packageName.contains("grab", ignoreCase = true)
+        // Grab Merchant often does not expose a stable visible "total" line in accessibility text.
+        // Keep strict checks for order ID + items, but do not block upload only because total is missing.
+        if (!isGrabPackage && result.total.isNullOrBlank()) return true
         return false
     }
 
