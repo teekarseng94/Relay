@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "121649847365",
+    "project_id": "desapetaling-53381",
+    "storage_bucket": "desapetaling-53381.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:121649847365:android:520b26eb0cf0effe51172c",
+        "android_client_info": {
+          "package_name": "com.gastropos.relay"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwVbInShJF8MHy6k82LV90eE6zbVz4VnA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

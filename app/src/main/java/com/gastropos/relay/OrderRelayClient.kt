@@ -2,7 +2,6 @@ package com.gastropos.relay
 
 import android.content.Context
 import android.content.Intent
-import android.os.Looper
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -15,9 +14,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 object OrderRelayClient {
-    private const val RELAY_URL = "https://desapetaling-53381.web.app/"
+    private const val RELAY_URL = "https://desapetaling-53381.web.app/api/v1/external-orders"
     private const val TAG = "OrderRelayClient"
-    private const val USER_AGENT = "GastroPos-Relay-v1"
     private val executor = Executors.newSingleThreadExecutor()
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -26,148 +24,64 @@ object OrderRelayClient {
         .callTimeout(45, TimeUnit.SECONDS)
         .build()
 
-    /**
-     * Enqueues JSON serialization and OkHttp on a dedicated worker thread.
-     * Safe to call from the main thread; no network or heavy work runs on the caller.
-     */
     fun send(context: Context, payload: RelayOrderPayload) {
         val appContext = context.applicationContext
         executor.execute {
-            check(Looper.getMainLooper().thread !== Thread.currentThread()) {
-                "Relay upload must not run on the main thread"
-            }
-            try {
-                val json = try {
-                    buildPosOrderJson(payload)
-                } catch (jsonError: Exception) {
-                    Log.e(
-                        TAG,
-                        "Failed to build JSON for order ${payload.orderId}: ${jsonError.message}",
-                        jsonError
-                    )
-                    persistUploadStatus(
-                        appContext,
-                        status = "JSON build failed: ${jsonError.message ?: "unknown error"}",
-                        success = false,
-                        firestoreOrderId = null
-                    )
-                    return@execute
-                }
-                persistParsedOrderJson(appContext, json.toString(2))
-
-                val request = Request.Builder()
-                    .url(RELAY_URL)
-                    .addHeader("User-Agent", USER_AGENT)
-                    .post(
-                        json.toString()
-                            .toRequestBody("application/json; charset=utf-8".toMediaType())
-                    )
-                    .build()
-
-                var lastError: Throwable? = null
-                var lastFailureStatus: String? = null
-                for (attempt in 1..MAX_UPLOAD_ATTEMPTS) {
-                    try {
-                        client.newCall(request).execute().use { response: Response ->
-                            val responseBody = response.body?.string().orEmpty()
-                            if (response.isSuccessful) {
-                                val parsedMeta = parseResponseMeta(responseBody)
-                                val statusText = if (response.code == 200) "HTTP 200 OK" else "HTTP ${response.code}"
-                                if (response.code == 200) {
-                                    Log.i(TAG, "200 OK received for order ${payload.orderId} (attempt=$attempt)")
-                                } else {
-                                    Log.i(TAG, "Upload success for order ${payload.orderId} (attempt=$attempt)")
-                                }
-                                val confirmedSaved = parsedMeta.firestoreOrderId != null ||
-                                    parsedMeta.ok == true
-                                val composedStatus = buildString {
-                                    append("$statusText (order ${payload.orderId})")
-                                    parsedMeta.firestoreOrderId?.let {
-                                        append(" | firestore_order_id: $it")
-                                    }
-                                    parsedMeta.ok?.let {
-                                        append(" | ok: $it")
-                                    }
-                                    if (!confirmedSaved) {
-                                        append(" | warning: save not confirmed by response")
-                                    }
-                                    if (responseBody.isNotBlank()) {
-                                        append(" | response: ")
-                                        append(responseBody.compactForStatus(260))
-                                    }
-                                }
-                                persistUploadStatus(
-                                    appContext,
-                                    status = composedStatus,
-                                    success = confirmedSaved,
-                                    firestoreOrderId = parsedMeta.firestoreOrderId
-                                )
-                                if (confirmedSaved) return@execute
-                                lastFailureStatus = composedStatus
-                                lastError = IllegalStateException("Save not confirmed by response")
-                            }
-
-                            Log.e(
-                                TAG,
-                                "Upload failed for ${payload.orderId}: HTTP ${response.code}, attempt=$attempt, body=$responseBody"
-                            )
-                            lastFailureStatus =
-                                buildString {
-                                    append("HTTP ${response.code} (attempt $attempt, order ${payload.orderId})")
-                                    if (responseBody.isNotBlank()) {
-                                        append(" | response: ")
-                                        append(responseBody.compactForStatus(220))
-                                    }
-                                }
-                            persistUploadStatus(
-                                appContext,
-                                status = lastFailureStatus!!,
-                                success = false,
-                                firestoreOrderId = null
-                            )
-                            lastError = IllegalStateException("HTTP ${response.code}")
-                        }
-                    } catch (e: Exception) {
-                        lastError = e
-                        Log.e(
-                            TAG,
-                            "Network failure uploading order ${payload.orderId} on attempt=$attempt: ${e.message}",
-                            e
-                        )
-                        lastFailureStatus = "Network error (attempt $attempt): ${e.message ?: "unknown error"}"
-                        persistUploadStatus(
-                            appContext,
-                            status = lastFailureStatus!!,
-                            success = false,
-                            firestoreOrderId = null
-                        )
-                    }
-
-                    if (attempt < MAX_UPLOAD_ATTEMPTS) {
-                        try {
-                            Thread.sleep(RETRY_DELAYS_MS[attempt - 1])
-                        } catch (_: InterruptedException) {
-                            Thread.currentThread().interrupt()
-                            break
-                        }
-                    }
-                }
-                Log.e(TAG, "All upload attempts failed for order ${payload.orderId}", lastError)
+            val parsedOrderJson = try {
+                buildPosOrderJson(payload)
+            } catch (jsonError: Exception) {
+                Log.e(
+                    TAG,
+                    "Failed to build JSON for order ${payload.orderId}: ${jsonError.message}",
+                    jsonError
+                )
                 persistUploadStatus(
                     appContext,
-                    status = buildString {
-                        append("All upload attempts failed for order ${payload.orderId}")
-                        lastFailureStatus?.let { append(" | last failure: $it") }
-                        lastError?.message?.let { append(" | error: $it") }
-                    },
+                    status = "JSON build failed: ${jsonError.message ?: "unknown error"}",
                     success = false,
                     firestoreOrderId = null
                 )
+                return@execute
+            }
+
+            persistParsedOrderJson(appContext, parsedOrderJson.toString(2))
+
+            val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
+            val requestBody = buildRelayRequestBody(payload, parsedOrderJson, rawTextCombined)
+            val request = Request.Builder()
+                .url(RELAY_URL)
+                .addHeader("Content-Type", "application/json")
+                .post(
+                    requestBody.toString()
+                        .toRequestBody("application/json; charset=utf-8".toMediaType())
+                )
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response: Response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        persistUploadStatus(
+                            appContext,
+                            status = "HTTP ${response.code} OK | response: ${responseBody.compactForStatus(220)}",
+                            success = true,
+                            firestoreOrderId = null
+                        )
+                        return@execute
+                    }
+                    Log.e(TAG, "Relay upload failed: HTTP ${response.code}, body=$responseBody")
+                    persistUploadStatus(
+                        appContext,
+                        status = "HTTP ${response.code} failed | response: ${responseBody.compactForStatus(220)}",
+                        success = false,
+                        firestoreOrderId = null
+                    )
+                }
             } catch (error: Exception) {
-                Log.e(TAG, "Failed to upload order payload", error)
+                Log.e(TAG, "Relay upload failed for order ${payload.orderId}", error)
                 persistUploadStatus(
                     appContext,
-                    status = "Unexpected error: ${error.message ?: "unknown error"}",
+                    status = "Network error: ${error.message ?: "unknown error"}",
                     success = false,
                     firestoreOrderId = null
                 )
@@ -248,6 +162,20 @@ object OrderRelayClient {
         }
     }
 
+    private fun buildRelayRequestBody(
+        payload: RelayOrderPayload,
+        parsedOrderJson: JSONObject,
+        rawTextCombined: String
+    ): JSONObject {
+        return JSONObject().apply {
+            put("source", "com.gastropos.relay")
+            put("order_id", parsedOrderJson.optString("order_id", payload.orderId))
+            put("raw_text", rawTextCombined)
+            put("items", parsedOrderJson.optJSONArray("items") ?: JSONArray())
+            put("grand_total", parsedOrderJson.opt("grand_total"))
+        }
+    }
+
     private fun extractMoney(value: String?): Double? {
         if (value.isNullOrBlank()) return null
         val match = MONEY_PATTERN.find(value) ?: return null
@@ -301,8 +229,6 @@ object OrderRelayClient {
         )
     }
 
-    private const val MAX_UPLOAD_ATTEMPTS = 4
-    private val RETRY_DELAYS_MS = longArrayOf(2000L, 4000L, 7000L)
     private const val PREFS = "relay_prefs"
     private const val KEY_LAST_UPLOAD_URL = "last_upload_url"
     private const val KEY_LAST_UPLOAD_TIME_MS = "last_upload_time_ms"
@@ -320,30 +246,10 @@ object OrderRelayClient {
     const val EXTRA_FIRESTORE_ORDER_ID = "extra_firestore_order_id"
     const val EXTRA_PARSED_ORDER_JSON = "extra_parsed_order_json"
 
-    private data class ResponseMeta(
-        val ok: Boolean?,
-        val firestoreOrderId: String?
-    )
-
-    private fun parseResponseMeta(responseBody: String): ResponseMeta {
-        if (responseBody.isBlank()) return ResponseMeta(ok = null, firestoreOrderId = null)
-        return try {
-            val json = JSONObject(responseBody)
-            ResponseMeta(
-                ok = if (json.has("ok")) json.optBoolean("ok") else null,
-                firestoreOrderId = json.optString("firestore_order_id", null)
-            )
-        } catch (_: Exception) {
-            ResponseMeta(ok = null, firestoreOrderId = null)
-        }
-    }
-
     private fun String.compactForStatus(maxLength: Int): String {
         val singleLine = replace("\\s+".toRegex(), " ").trim()
-        return if (singleLine.length <= maxLength) {
-            singleLine
-        } else {
-            singleLine.take(maxLength - 3) + "..."
-        }
+        if (singleLine.isBlank()) return "empty"
+        return if (singleLine.length <= maxLength) singleLine else singleLine.take(maxLength - 3) + "..."
     }
+
 }
