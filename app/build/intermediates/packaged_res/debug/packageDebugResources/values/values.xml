@@ -26,6 +26,9 @@
     <string name="manual_scraper_open_grab_button">Open Grab merchant app</string>
     <string name="manual_scraper_open_shopee_button">Open Shopee merchant app</string>
     <string name="manual_scraper_page_title">Manual scraper</string>
+    <string name="manual_scraper_parsed_order_hint">This is the order information captured from the merchant screen before upload.</string>
+    <string name="manual_scraper_parsed_order_label">Parsed order sent to POS</string>
+    <string name="manual_scraper_parsed_order_waiting">Waiting for parsed order data...</string>
     <string name="manual_scraper_result_label">Result</string>
     <string name="manual_scraper_status_failed">Failed</string>
     <string name="manual_scraper_status_idle">Idle</string>

@@ -23,6 +23,7 @@ class ManualScraperActivity : AppCompatActivity() {
     private lateinit var uploadTimeValue: TextView
     private lateinit var firestoreOrderIdValue: TextView
     private lateinit var uploadStatusValue: TextView
+    private lateinit var parsedOrderJsonValue: TextView
     private var resultReceiverRegistered = false
     private var uploadStatusReceiverRegistered = false
     private val uiHandler = Handler(Looper.getMainLooper())
@@ -58,19 +59,23 @@ class ManualScraperActivity : AppCompatActivity() {
             val timeMs = intent.getLongExtra(OrderRelayClient.EXTRA_UPLOAD_TIME_MS, 0L)
             val status = intent.getStringExtra(OrderRelayClient.EXTRA_UPLOAD_STATUS)
             val firestoreOrderId = intent.getStringExtra(OrderRelayClient.EXTRA_FIRESTORE_ORDER_ID)
+            val parsedOrderJson = intent.getStringExtra(OrderRelayClient.EXTRA_PARSED_ORDER_JSON)
             val hasSuccess = intent.hasExtra(OrderRelayClient.EXTRA_UPLOAD_SUCCESS)
             val success = if (hasSuccess) {
                 intent.getBooleanExtra(OrderRelayClient.EXTRA_UPLOAD_SUCCESS, false)
             } else {
                 null
             }
-            updateUploadStatusViews(
-                url = url,
-                timeMs = timeMs,
-                status = status,
-                success = success,
-                firestoreOrderId = firestoreOrderId
-            )
+            if (intent.hasExtra(OrderRelayClient.EXTRA_UPLOAD_STATUS)) {
+                updateUploadStatusViews(
+                    url = url,
+                    timeMs = timeMs,
+                    status = status,
+                    success = success,
+                    firestoreOrderId = firestoreOrderId
+                )
+            }
+            updateParsedOrderJsonView(parsedOrderJson)
         }
     }
 
@@ -86,6 +91,7 @@ class ManualScraperActivity : AppCompatActivity() {
         uploadTimeValue = findViewById(R.id.manualScraperUploadTimeValue)
         firestoreOrderIdValue = findViewById(R.id.manualScraperFirestoreIdValue)
         uploadStatusValue = findViewById(R.id.manualScraperUploadStatusValue)
+        parsedOrderJsonValue = findViewById(R.id.manualScraperParsedOrderValue)
         statusValue.setTextColor(neutralColor)
         uploadStatusValue.setTextColor(neutralColor)
 
@@ -93,6 +99,7 @@ class ManualScraperActivity : AppCompatActivity() {
             statusValue.text = getString(R.string.manual_scraper_status_triggered)
             statusValue.setTextColor(neutralColor)
             messageValue.text = getString(R.string.manual_scraper_waiting_result)
+            parsedOrderJsonValue.text = getString(R.string.manual_scraper_parsed_order_waiting)
             uiHandler.removeCallbacks(requestTimeoutRunnable)
             uiHandler.postDelayed(requestTimeoutRunnable, REQUEST_TIMEOUT_MS)
             sendBroadcast(Intent(ACTION_MANUAL_SCRAPE).setPackage(packageName))
@@ -164,6 +171,7 @@ class ManualScraperActivity : AppCompatActivity() {
         val timeMs = prefs.getLong(KEY_LAST_UPLOAD_TIME_MS, 0L)
         val status = prefs.getString(KEY_LAST_UPLOAD_STATUS, null)
         val firestoreOrderId = prefs.getString(KEY_LAST_FIRESTORE_ORDER_ID, null)
+        val parsedOrderJson = OrderRelayClient.getLastParsedOrderJson(this)
         val success = if (prefs.contains(KEY_LAST_UPLOAD_SUCCESS)) {
             prefs.getBoolean(KEY_LAST_UPLOAD_SUCCESS, false)
         } else {
@@ -176,6 +184,7 @@ class ManualScraperActivity : AppCompatActivity() {
             success = success,
             firestoreOrderId = firestoreOrderId
         )
+        updateParsedOrderJsonView(parsedOrderJson)
     }
 
     private fun updateUploadStatusViews(
@@ -206,6 +215,12 @@ class ManualScraperActivity : AppCompatActivity() {
                 null -> neutralColor
             }
         )
+    }
+
+    private fun updateParsedOrderJsonView(parsedOrderJson: String?) {
+        if (parsedOrderJson == null) return
+        parsedOrderJsonValue.text = parsedOrderJson.takeIf { it.isNotBlank() }
+            ?: getString(R.string.manual_scraper_upload_not_available)
     }
 
     private fun launchMerchantApp(packageName: String) {

@@ -47,6 +47,9 @@
     <string name="manual_scraper_status_failed">Failed</string>
     <string name="manual_scraper_waiting_result">Waiting for scraper response...</string>
     <string name="manual_scraper_no_response">No response from scraper service. Ensure accessibility is enabled and retry on a merchant order screen.</string>
+    <string name="manual_scraper_parsed_order_label">Parsed order sent to POS</string>
+    <string name="manual_scraper_parsed_order_hint">This is the order information captured from the merchant screen before upload.</string>
+    <string name="manual_scraper_parsed_order_waiting">Waiting for parsed order data...</string>
     <string name="manual_scraper_upload_title">Last upload details</string>
     <string name="manual_scraper_upload_url_label">Destination URL</string>
     <string name="manual_scraper_upload_time_label">Last upload time</string>

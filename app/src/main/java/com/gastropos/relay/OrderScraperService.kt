@@ -234,6 +234,18 @@ class OrderScraperService : AccessibilityService() {
             var result = extractItemsAndTotal(allTexts, packageName)
             result = maybeBuildGrabFallbackItems(result, allTexts, packageName)
             logExtractionSummary(scrapedOrderId, packageName, result, allTexts)
+
+            val payload = RelayOrderPayload(
+                source = source,
+                sourcePackage = packageName,
+                orderId = finalOrderId,
+                total = result.total,
+                items = result.items,
+                rawTexts = allTexts,
+                scrapedAtEpochMs = System.currentTimeMillis()
+            )
+            OrderRelayClient.recordParsedOrderPreview(this, payload)
+
             if (shouldSkipDueToStrictMode(scrapedOrderId, packageName, result)) {
                 Log.w(
                     "OrderScraper",
@@ -252,16 +264,6 @@ class OrderScraperService : AccessibilityService() {
                 Log.d("OrderScraper", "No item rows found yet, waiting for more UI updates.")
                 return ScrapeSendResult(false, "No item rows detected yet on this screen.")
             }
-
-            val payload = RelayOrderPayload(
-                source = source,
-                sourcePackage = packageName,
-                orderId = finalOrderId,
-                total = result.total,
-                items = result.items,
-                rawTexts = allTexts,
-                scrapedAtEpochMs = System.currentTimeMillis()
-            )
 
             OrderRepository.markProcessed(this, finalOrderId)
             OrderRelayClient.send(this, payload)
