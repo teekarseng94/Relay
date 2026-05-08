@@ -15,7 +15,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 object OrderRelayClient {
-    private const val RELAY_URL = "https://rdp-proj.web.app/"
+    private const val RELAY_URL = "https://desapetaling-53381.web.app/"
     private const val TAG = "OrderRelayClient"
     private const val USER_AGENT = "GastroPos-Relay-v1"
     private val executor = Executors.newSingleThreadExecutor()

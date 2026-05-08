@@ -32,89 +32,11 @@
         android:layout_marginTop="12dp"
         android:text="@string/open_accessibility_settings" />
 
-    <TextView
-        android:id="@+id/keywordModeTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="@string/keyword_mode_title"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/grabKeywordsLabel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/grab_keywords_label" />
-
-    <EditText
-        android:id="@+id/grabKeywordsInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/grab_keywords_hint"
-        android:importantForAutofill="no"
-        android:inputType="text"
-        android:maxLines="1" />
-
-    <TextView
-        android:id="@+id/shopeeKeywordsLabel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/shopee_keywords_label" />
-
-    <EditText
-        android:id="@+id/shopeeKeywordsInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/shopee_keywords_hint"
-        android:importantForAutofill="no"
-        android:inputType="text"
-        android:maxLines="1" />
-
-    <TextView
-        android:id="@+id/keywordModeHint"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/keyword_mode_hint"
-        android:textSize="12sp" />
-
-    <Button
-        android:id="@+id/saveKeywordsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/save_keywords_button" />
-
-    <Button
-        android:id="@+id/resetKeywordsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/reset_keywords_button" />
-
-    <TextView
-        android:id="@+id/lastRouteTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/last_route_title"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/lastRouteValue"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/last_route_default"
-        android:textSize="12sp" />
-
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/strictModeSwitch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="24dp"
         android:text="@string/strict_mode_label" />
 
     <TextView
