@@ -167,7 +167,7 @@ class ManualScraperActivity : AppCompatActivity() {
 
     private fun loadLastUploadStatus() {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val url = prefs.getString(KEY_LAST_UPLOAD_URL, null) ?: OrderRelayClient.getRelayUrl()
+        val url = prefs.getString(KEY_LAST_UPLOAD_URL, null) ?: OrderRelayClient.getRelayUrl(this)
         val timeMs = prefs.getLong(KEY_LAST_UPLOAD_TIME_MS, 0L)
         val status = prefs.getString(KEY_LAST_UPLOAD_STATUS, null)
         val firestoreOrderId = prefs.getString(KEY_LAST_FIRESTORE_ORDER_ID, null)

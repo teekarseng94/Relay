@@ -7,6 +7,15 @@
     <string name="main_instructions">Enable Notification Access and Accessibility for GastroPos Relay.</string>
     <string name="open_notification_settings">Open notification access settings</string>
     <string name="open_accessibility_settings">Open accessibility settings</string>
+    <string name="relay_url_label">Relay backend URL</string>
+    <string name="relay_url_hint">http://192.168.5.32:8765/api/v1/external-orders</string>
+    <string name="save_relay_url_button">Save backend URL</string>
+    <string name="test_relay_url_button">Test backend connection</string>
+    <string name="relay_url_saved">Relay backend URL saved</string>
+    <string name="relay_url_required">Relay backend URL is required.</string>
+    <string name="relay_url_invalid">Relay backend URL must start with http:// or https://</string>
+    <string name="relay_connection_status_idle">Connection status: not tested</string>
+    <string name="relay_connection_status_testing">Connection status: testing...</string>
     <string name="strict_mode_label">Strict scraping mode (require Order ID, items, and total)</string>
     <string name="strict_mode_hint">When enabled, upload is skipped if Order ID, items, or total is missing.</string>
     <string name="test_grab_button">Test launch Grab</string>

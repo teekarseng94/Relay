@@ -2,10 +2,12 @@ package com.gastropos.relay
 
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +15,8 @@ import androidx.appcompat.widget.SwitchCompat
 
 class MainActivity : AppCompatActivity() {
     private lateinit var strictModeSwitch: SwitchCompat
+    private lateinit var relayUrlInput: EditText
+    private lateinit var relayConnectionStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,6 +36,14 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.openManualScraperPageButton).setOnClickListener {
             startActivity(Intent(this, ManualScraperActivity::class.java))
+        }
+        relayUrlInput = findViewById(R.id.relayUrlInput)
+        relayConnectionStatusText = findViewById(R.id.relayConnectionStatusText)
+        findViewById<Button>(R.id.saveRelayUrlButton).setOnClickListener {
+            saveRelayUrl()
+        }
+        findViewById<Button>(R.id.testRelayUrlButton).setOnClickListener {
+            testRelayConnection()
         }
         strictModeSwitch = findViewById(R.id.strictModeSwitch)
         strictModeSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -66,6 +78,7 @@ class MainActivity : AppCompatActivity() {
             Log.d("MainActivity", "Required permissions granted for GastroPos Relay")
         }
 
+        loadRelayUrl()
         loadStrictModeSetting()
     }
 
@@ -117,6 +130,40 @@ class MainActivity : AppCompatActivity() {
             .getBoolean(KEY_STRICT_MODE_ENABLED, true)
         if (strictModeSwitch.isChecked != enabled) {
             strictModeSwitch.isChecked = enabled
+        }
+    }
+
+    private fun loadRelayUrl() {
+        val current = OrderRelayClient.getRelayUrl(this)
+        if (relayUrlInput.text.toString() != current) {
+            relayUrlInput.setText(current)
+        }
+    }
+
+    private fun saveRelayUrl() {
+        val relayUrl = relayUrlInput.text.toString().trim()
+        if (relayUrl.isBlank()) {
+            Toast.makeText(this, R.string.relay_url_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!relayUrl.startsWith("http://") && !relayUrl.startsWith("https://")) {
+            Toast.makeText(this, R.string.relay_url_invalid, Toast.LENGTH_SHORT).show()
+            return
+        }
+        OrderRelayClient.setRelayUrl(this, relayUrl)
+        Toast.makeText(this, R.string.relay_url_saved, Toast.LENGTH_SHORT).show()
+        relayConnectionStatusText.text = getString(R.string.relay_connection_status_idle)
+        relayConnectionStatusText.setTextColor(Color.parseColor("#616161"))
+    }
+
+    private fun testRelayConnection() {
+        relayConnectionStatusText.text = getString(R.string.relay_connection_status_testing)
+        relayConnectionStatusText.setTextColor(Color.parseColor("#616161"))
+        OrderRelayClient.testBackendConnection(this) { success, message ->
+            relayConnectionStatusText.text = message
+            relayConnectionStatusText.setTextColor(
+                if (success) Color.parseColor("#1B5E20") else Color.parseColor("#B71C1C")
+            )
         }
     }
 

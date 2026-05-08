@@ -2,6 +2,8 @@ package com.gastropos.relay
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -14,9 +16,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 object OrderRelayClient {
-    private const val RELAY_URL = "https://desapetaling-53381.web.app/api/v1/external-orders"
+    private const val DEFAULT_RELAY_URL = "http://192.168.5.32:8765/api/v1/external-orders"
     private const val TAG = "OrderRelayClient"
     private val executor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -26,6 +29,7 @@ object OrderRelayClient {
 
     fun send(context: Context, payload: RelayOrderPayload) {
         val appContext = context.applicationContext
+        val relayUrl = getRelayUrl(appContext)
         executor.execute {
             val parsedOrderJson = try {
                 buildPosOrderJson(payload)
@@ -37,6 +41,7 @@ object OrderRelayClient {
                 )
                 persistUploadStatus(
                     appContext,
+                    relayUrl = relayUrl,
                     status = "JSON build failed: ${jsonError.message ?: "unknown error"}",
                     success = false,
                     firestoreOrderId = null
@@ -49,7 +54,7 @@ object OrderRelayClient {
             val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
             val requestBody = buildRelayRequestBody(payload, parsedOrderJson, rawTextCombined)
             val request = Request.Builder()
-                .url(RELAY_URL)
+                .url(relayUrl)
                 .addHeader("Content-Type", "application/json")
                 .post(
                     requestBody.toString()
@@ -63,6 +68,7 @@ object OrderRelayClient {
                     if (response.isSuccessful) {
                         persistUploadStatus(
                             appContext,
+                            relayUrl = relayUrl,
                             status = "HTTP ${response.code} OK | response: ${responseBody.compactForStatus(220)}",
                             success = true,
                             firestoreOrderId = null
@@ -72,6 +78,7 @@ object OrderRelayClient {
                     Log.e(TAG, "Relay upload failed: HTTP ${response.code}, body=$responseBody")
                     persistUploadStatus(
                         appContext,
+                        relayUrl = relayUrl,
                         status = "HTTP ${response.code} failed | response: ${responseBody.compactForStatus(220)}",
                         success = false,
                         firestoreOrderId = null
@@ -81,6 +88,7 @@ object OrderRelayClient {
                 Log.e(TAG, "Relay upload failed for order ${payload.orderId}", error)
                 persistUploadStatus(
                     appContext,
+                    relayUrl = relayUrl,
                     status = "Network error: ${error.message ?: "unknown error"}",
                     success = false,
                     firestoreOrderId = null
@@ -90,15 +98,55 @@ object OrderRelayClient {
     }
 
     fun recordScrapeFailure(context: Context, reason: String) {
+        val appContext = context.applicationContext
         persistUploadStatus(
-            context = context.applicationContext,
+            context = appContext,
+            relayUrl = getRelayUrl(appContext),
             status = "Scrape failed before upload: $reason",
             success = false,
             firestoreOrderId = null
         )
     }
 
-    fun getRelayUrl(): String = RELAY_URL
+    fun getRelayUrl(context: Context): String {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_RELAY_URL_OVERRIDE, null)
+            ?.trim()
+        return saved?.takeIf { it.isNotBlank() } ?: DEFAULT_RELAY_URL
+    }
+
+    fun setRelayUrl(context: Context, relayUrl: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_RELAY_URL_OVERRIDE, relayUrl.trim())
+            .apply()
+    }
+
+    fun testBackendConnection(context: Context, onResult: (Boolean, String) -> Unit) {
+        val relayUrl = getRelayUrl(context.applicationContext)
+        val healthUrl = relayUrl.toHealthUrl()
+        val request = Request.Builder()
+            .url(healthUrl)
+            .get()
+            .build()
+        executor.execute {
+            try {
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    val message = if (response.isSuccessful) {
+                        "Reachable: HTTP ${response.code} (${healthUrl})"
+                    } else {
+                        "Unreachable: HTTP ${response.code} (${healthUrl}) ${responseBody.compactForStatus(120)}"
+                    }
+                    mainHandler.post { onResult(response.isSuccessful, message) }
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    onResult(false, "Connection failed (${healthUrl}): ${error.message ?: "unknown error"}")
+                }
+            }
+        }
+    }
 
     fun getLastParsedOrderJson(context: Context): String? {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -200,6 +248,7 @@ object OrderRelayClient {
 
     private fun persistUploadStatus(
         context: Context,
+        relayUrl: String,
         status: String,
         success: Boolean,
         firestoreOrderId: String?
@@ -207,7 +256,7 @@ object OrderRelayClient {
         val timestamp = System.currentTimeMillis()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_LAST_UPLOAD_URL, RELAY_URL)
+            .putString(KEY_LAST_UPLOAD_URL, relayUrl)
             .putLong(KEY_LAST_UPLOAD_TIME_MS, timestamp)
             .putString(KEY_LAST_UPLOAD_STATUS, status)
             .putBoolean(KEY_LAST_UPLOAD_SUCCESS, success)
@@ -217,7 +266,7 @@ object OrderRelayClient {
         context.sendBroadcast(
             Intent(ACTION_UPLOAD_STATUS_UPDATED).apply {
                 `package` = context.packageName
-                putExtra(EXTRA_UPLOAD_URL, RELAY_URL)
+                putExtra(EXTRA_UPLOAD_URL, relayUrl)
                 putExtra(EXTRA_UPLOAD_TIME_MS, timestamp)
                 putExtra(EXTRA_UPLOAD_STATUS, status)
                 putExtra(EXTRA_UPLOAD_SUCCESS, success)
@@ -230,6 +279,7 @@ object OrderRelayClient {
     }
 
     private const val PREFS = "relay_prefs"
+    private const val KEY_RELAY_URL_OVERRIDE = "relay_url_override"
     private const val KEY_LAST_UPLOAD_URL = "last_upload_url"
     private const val KEY_LAST_UPLOAD_TIME_MS = "last_upload_time_ms"
     private const val KEY_LAST_UPLOAD_STATUS = "last_upload_status"
@@ -250,6 +300,14 @@ object OrderRelayClient {
         val singleLine = replace("\\s+".toRegex(), " ").trim()
         if (singleLine.isBlank()) return "empty"
         return if (singleLine.length <= maxLength) singleLine else singleLine.take(maxLength - 3) + "..."
+    }
+
+    private fun String.toHealthUrl(): String {
+        return if (endsWith("/api/v1/external-orders")) {
+            removeSuffix("/api/v1/external-orders") + "/health"
+        } else {
+            trimEnd('/') + "/health"
+        }
     }
 
 }

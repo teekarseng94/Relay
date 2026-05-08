@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.gastropos.relay.app-mergeDebugResources-29:/values-h360dp-land-v13/values-h360dp-land-v13.xml",
+            "outputFile": "com.gastropos.relay.app-mergeDebugResources-3:/values-h360dp-land-v13/values-h360dp-land-v13.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Acer\\.gradle\\caches\\9.0.0\\transforms\\d885eb3e98464e99bfa0e1002c9681e5\\transformed\\material-1.12.0\\res\\values-h360dp-land-v13\\values-h360dp-land-v13.xml",
+                    "source": "D:\\Users\\User\\Gradle\\caches\\9.0.0\\transforms\\5f4489ef3256d844c42db3e728483d2b\\transformed\\material-1.12.0\\res\\values-h360dp-land-v13\\values-h360dp-land-v13.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10",
                         "startColumns": "4,4,4,4,4,4,4,4,4",
