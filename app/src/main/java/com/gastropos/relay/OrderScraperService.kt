@@ -46,6 +46,7 @@ class OrderScraperService : AccessibilityService() {
 
     private val scrapeDebounceLock = Any()
     private val lastScrapeElapsedByWindow = ArrayMap<String, Long>()
+    private val retryCountByOrderId = ArrayMap<String, Int>()
     private var windowManager: WindowManager? = null
     private var floatingSyncButton: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -53,7 +54,8 @@ class OrderScraperService : AccessibilityService() {
     private val manualSyncReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != ManualScraperActivity.ACTION_MANUAL_SCRAPE) return
-            val result = triggerManualSync()
+            val forceUpload = intent.getBooleanExtra(ManualScraperActivity.EXTRA_FORCE_UPLOAD, false)
+            val result = triggerManualSync(forceUpload = forceUpload)
             dispatchManualSyncResult(result)
         }
     }
@@ -171,7 +173,7 @@ class OrderScraperService : AccessibilityService() {
         }
     }
 
-    private fun triggerManualSync(): ManualSyncResult {
+    private fun triggerManualSync(forceUpload: Boolean = false): ManualSyncResult {
         val root = rootInActiveWindow
         if (root == null) {
             val message = "No active merchant screen to sync."
@@ -197,7 +199,8 @@ class OrderScraperService : AccessibilityService() {
             packageName = packageName,
             source = source,
             fallbackOrderId = null,
-            isManualTrigger = true
+            isManualTrigger = true,
+            forceUpload = forceUpload
         )
         if (!scrapeResult.success) {
             OrderRelayClient.recordScrapeFailure(this, scrapeResult.message)
@@ -210,15 +213,17 @@ class OrderScraperService : AccessibilityService() {
         packageName: String,
         source: String,
         fallbackOrderId: String?,
-        isManualTrigger: Boolean
+        isManualTrigger: Boolean,
+        forceUpload: Boolean = false
     ): ScrapeSendResult {
         try {
             val allTexts = mutableListOf<String>()
             collectTextsRecursive(root, allTexts)
             if (allTexts.isEmpty()) return ScrapeSendResult(false, "No visible text found on current screen.")
-            Log.d("OrderScraper", "Collected ${allTexts.size} text nodes for $packageName")
+            val mergedTexts = collectExtendedTextsForLongOrder(packageName, allTexts)
+            Log.d("OrderScraper", "Collected ${mergedTexts.size} text nodes for $packageName")
 
-            val scrapedOrderId = findOrderId(allTexts)
+            val scrapedOrderId = findOrderId(mergedTexts)
                 ?: fallbackOrderId
                 ?: "MANUAL-${System.currentTimeMillis()}"
             val finalOrderId = if (isManualTrigger && OrderRepository.isAlreadyProcessed(this, scrapedOrderId)) {
@@ -231,9 +236,9 @@ class OrderScraperService : AccessibilityService() {
                 return ScrapeSendResult(false, "Order already processed: $finalOrderId")
             }
 
-            var result = extractItemsAndTotal(allTexts, packageName)
-            result = maybeBuildGrabFallbackItems(result, allTexts, packageName)
-            logExtractionSummary(scrapedOrderId, packageName, result, allTexts)
+            var result = extractItemsAndTotal(mergedTexts, packageName)
+            result = maybeBuildGrabFallbackItems(result, mergedTexts, packageName)
+            logExtractionSummary(scrapedOrderId, packageName, result, mergedTexts)
 
             val payload = RelayOrderPayload(
                 source = source,
@@ -241,10 +246,24 @@ class OrderScraperService : AccessibilityService() {
                 orderId = finalOrderId,
                 total = result.total,
                 items = result.items,
-                rawTexts = allTexts,
-                scrapedAtEpochMs = System.currentTimeMillis()
+                rawTexts = mergedTexts,
+                scrapedAtEpochMs = System.currentTimeMillis(),
+                forceUpload = forceUpload
             )
             OrderRelayClient.recordParsedOrderPreview(this, payload)
+
+            val scrapeIssue = detectIncompleteScrape(rawText = payload.rawTexts.joinToString("\n"), payload = payload)
+            if (!forceUpload && scrapeIssue != null) {
+                val retryScheduled = scheduleRetryIfPossible(finalOrderId, packageName, source, isManualTrigger)
+                return ScrapeSendResult(
+                    false,
+                    if (retryScheduled) {
+                        "Detected incomplete scrape ($scrapeIssue). Retrying capture..."
+                    } else {
+                        "Long order scrape incomplete. Please scroll to bottom once, return to top, then tap Sync again."
+                    }
+                )
+            }
 
             if (shouldSkipDueToStrictMode(scrapedOrderId, packageName, result)) {
                 Log.w(
@@ -262,11 +281,19 @@ class OrderScraperService : AccessibilityService() {
             }
             if (result.items.isEmpty()) {
                 Log.d("OrderScraper", "No item rows found yet, waiting for more UI updates.")
-                return ScrapeSendResult(false, "No item rows detected yet on this screen.")
+                val retryScheduled = scheduleRetryIfPossible(finalOrderId, packageName, source, isManualTrigger)
+                return ScrapeSendResult(
+                    false,
+                    if (retryScheduled) {
+                        "No item rows detected yet. Retrying capture..."
+                    } else {
+                        "Unable to detect item rows. Please scroll through the full order and tap Sync again."
+                    }
+                )
             }
 
-            OrderRepository.markProcessed(this, finalOrderId)
             OrderRelayClient.send(this, payload)
+            retryCountByOrderId.remove(finalOrderId)
             Log.i(
                 "OrderScraper",
                 if (isManualTrigger) {
@@ -597,6 +624,103 @@ class OrderScraperService : AccessibilityService() {
         return false
     }
 
+    private fun detectIncompleteScrape(rawText: String, payload: RelayOrderPayload): String? {
+        val parsed = OrderTextParser.parse_order_text(rawText)
+        if (parsed.items.isEmpty()) return "no parsed items"
+        if (parsed.status == "INCOMPLETE_SCRAPE") return "parser flagged incomplete"
+
+        val sourceIsGrab = payload.source.equals("grab", ignoreCase = true) ||
+            payload.sourcePackage.contains("grab", ignoreCase = true)
+        if (!sourceIsGrab) return null
+
+        val expectedItemCount = ITEM_LINE_PATTERN.findAll(rawText).count()
+        if (expectedItemCount >= 2 && parsed.items.size < expectedItemCount) {
+            return "parsed ${parsed.items.size} of ~$expectedItemCount item lines"
+        }
+        if (parsed.items.size == 1) {
+            val one = parsed.items.first()
+            val looksLikeOrderIdName = one.name.contains(parsed.orderId, ignoreCase = true) ||
+                one.name.contains(payload.orderId, ignoreCase = true)
+            val grandTotal = parsed.grandTotal
+            if (looksLikeOrderIdName && grandTotal != null && one.price != null && grandTotal > one.price + 1.0) {
+                return "single order-id placeholder item"
+            }
+        }
+        return null
+    }
+
+    private fun collectExtendedTextsForLongOrder(packageName: String, initialTexts: List<String>): List<String> {
+        if (!packageName.contains("grab", ignoreCase = true)) return initialTexts
+        val joined = initialTexts.joinToString("\n")
+        val hasLongOrderHint = LONG_ORDER_ITEM_COUNT_PATTERN.containsMatchIn(joined) ||
+            ITEM_LINE_PATTERN.findAll(joined).count() >= 4
+        if (!hasLongOrderHint) return initialTexts
+
+        val collected = LinkedHashSet<String>()
+        initialTexts.forEach { if (it.isNotBlank()) collected.add(it) }
+
+        repeat(MAX_SCROLL_CAPTURE_PASSES) {
+            val currentRoot = rootInActiveWindow ?: return@repeat
+            val scrolled = try {
+                performScrollForward(currentRoot)
+            } finally {
+                currentRoot.recycle()
+            }
+            if (!scrolled) return@repeat
+
+            SystemClock.sleep(SCROLL_CAPTURE_DELAY_MS)
+            val newRoot = rootInActiveWindow ?: return@repeat
+            try {
+                val pageTexts = mutableListOf<String>()
+                collectTextsRecursive(newRoot, pageTexts)
+                pageTexts.forEach { if (it.isNotBlank()) collected.add(it) }
+            } finally {
+                newRoot.recycle()
+            }
+        }
+        return collected.toList()
+    }
+
+    private fun performScrollForward(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        if (node.isScrollable && node.isVisibleToUser &&
+            node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+        ) {
+            return true
+        }
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                if (performScrollForward(child)) return true
+            } finally {
+                child.recycle()
+            }
+        }
+        return false
+    }
+
+    private fun scheduleRetryIfPossible(
+        orderId: String,
+        packageName: String,
+        source: String,
+        isManualTrigger: Boolean
+    ): Boolean {
+        val attempts = retryCountByOrderId[orderId] ?: 0
+        if (attempts >= MAX_INCOMPLETE_RETRIES) return false
+        retryCountByOrderId[orderId] = attempts + 1
+        mainHandler.postDelayed({
+            val root = rootInActiveWindow ?: return@postDelayed
+            scrapeAndSend(
+                root = root,
+                packageName = packageName,
+                source = source,
+                fallbackOrderId = orderId,
+                isManualTrigger = isManualTrigger
+            )
+        }, INCOMPLETE_RETRY_DELAY_MS)
+        return true
+    }
+
     private data class ManualSyncResult(
         val success: Boolean,
         val message: String
@@ -611,7 +735,13 @@ class OrderScraperService : AccessibilityService() {
         private const val SCRAPE_DEBOUNCE_MS = 2000L
         private const val MAX_TEXT_NODES = 3500
         private const val SYNC_BUTTON_REENABLE_DELAY_MS = 1000L
+        private const val INCOMPLETE_RETRY_DELAY_MS = 1200L
+        private const val MAX_INCOMPLETE_RETRIES = 3
+        private const val MAX_SCROLL_CAPTURE_PASSES = 3
+        private const val SCROLL_CAPTURE_DELAY_MS = 500L
         private const val PREFS = "relay_prefs"
         private const val KEY_STRICT_MODE_ENABLED = "strict_mode_enabled"
+        private val ITEM_LINE_PATTERN = Regex("(?i)\\b\\d+\\s*x\\s+")
+        private val LONG_ORDER_ITEM_COUNT_PATTERN = Regex("(?i)\\b([5-9]|[1-9]\\d+)\\s+items?\\s+for\\s*\\*{3}\\b")
     }
 }

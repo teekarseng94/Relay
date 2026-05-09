@@ -1,6 +1,8 @@
 package com.gastropos.relay
 
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -15,6 +17,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.text.DateFormat
 import java.util.Date
+import org.json.JSONObject
 
 class ManualScraperActivity : AppCompatActivity() {
     private lateinit var statusValue: TextView
@@ -24,6 +27,7 @@ class ManualScraperActivity : AppCompatActivity() {
     private lateinit var firestoreOrderIdValue: TextView
     private lateinit var uploadStatusValue: TextView
     private lateinit var parsedOrderJsonValue: TextView
+    private lateinit var debugCompareValue: TextView
     private var resultReceiverRegistered = false
     private var uploadStatusReceiverRegistered = false
     private val uiHandler = Handler(Looper.getMainLooper())
@@ -60,6 +64,7 @@ class ManualScraperActivity : AppCompatActivity() {
             val status = intent.getStringExtra(OrderRelayClient.EXTRA_UPLOAD_STATUS)
             val firestoreOrderId = intent.getStringExtra(OrderRelayClient.EXTRA_FIRESTORE_ORDER_ID)
             val parsedOrderJson = intent.getStringExtra(OrderRelayClient.EXTRA_PARSED_ORDER_JSON)
+            val rawScrapeText = intent.getStringExtra(OrderRelayClient.EXTRA_RAW_SCRAPE_TEXT)
             val hasSuccess = intent.hasExtra(OrderRelayClient.EXTRA_UPLOAD_SUCCESS)
             val success = if (hasSuccess) {
                 intent.getBooleanExtra(OrderRelayClient.EXTRA_UPLOAD_SUCCESS, false)
@@ -76,6 +81,7 @@ class ManualScraperActivity : AppCompatActivity() {
                 )
             }
             updateParsedOrderJsonView(parsedOrderJson)
+            updateDebugCompareView(parsedOrderJson, rawScrapeText)
         }
     }
 
@@ -92,6 +98,7 @@ class ManualScraperActivity : AppCompatActivity() {
         firestoreOrderIdValue = findViewById(R.id.manualScraperFirestoreIdValue)
         uploadStatusValue = findViewById(R.id.manualScraperUploadStatusValue)
         parsedOrderJsonValue = findViewById(R.id.manualScraperParsedOrderValue)
+        debugCompareValue = findViewById(R.id.manualScraperDebugCompareValue)
         statusValue.setTextColor(neutralColor)
         uploadStatusValue.setTextColor(neutralColor)
 
@@ -100,6 +107,7 @@ class ManualScraperActivity : AppCompatActivity() {
             statusValue.setTextColor(neutralColor)
             messageValue.text = getString(R.string.manual_scraper_waiting_result)
             parsedOrderJsonValue.text = getString(R.string.manual_scraper_parsed_order_waiting)
+            debugCompareValue.text = getString(R.string.manual_scraper_debug_waiting)
             uiHandler.removeCallbacks(requestTimeoutRunnable)
             uiHandler.postDelayed(requestTimeoutRunnable, REQUEST_TIMEOUT_MS)
             sendBroadcast(Intent(ACTION_MANUAL_SCRAPE).setPackage(packageName))
@@ -109,6 +117,23 @@ class ManualScraperActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.manualScraperOpenShopeeButton).setOnClickListener {
             launchMerchantApp(SHOPEE_PACKAGE)
+        }
+        findViewById<Button>(R.id.manualScraperCopyDebugButton).setOnClickListener {
+            copyDebugText()
+        }
+        findViewById<Button>(R.id.manualScraperForceUploadButton).setOnClickListener {
+            statusValue.text = getString(R.string.manual_scraper_status_triggered)
+            statusValue.setTextColor(neutralColor)
+            messageValue.text = getString(R.string.manual_scraper_force_upload_waiting)
+            uiHandler.removeCallbacks(requestTimeoutRunnable)
+            uiHandler.postDelayed(requestTimeoutRunnable, REQUEST_TIMEOUT_MS)
+            val result = OrderRelayClient.forceUploadLastCaptured(this)
+            messageValue.text = result.message
+            if (!result.success) {
+                statusValue.text = getString(R.string.manual_scraper_status_failed)
+                statusValue.setTextColor(errorColor)
+                uiHandler.removeCallbacks(requestTimeoutRunnable)
+            }
         }
     }
 
@@ -172,6 +197,7 @@ class ManualScraperActivity : AppCompatActivity() {
         val status = prefs.getString(KEY_LAST_UPLOAD_STATUS, null)
         val firestoreOrderId = prefs.getString(KEY_LAST_FIRESTORE_ORDER_ID, null)
         val parsedOrderJson = OrderRelayClient.getLastParsedOrderJson(this)
+        val rawScrapeText = OrderRelayClient.getLastRawScrapeText(this)
         val success = if (prefs.contains(KEY_LAST_UPLOAD_SUCCESS)) {
             prefs.getBoolean(KEY_LAST_UPLOAD_SUCCESS, false)
         } else {
@@ -185,6 +211,7 @@ class ManualScraperActivity : AppCompatActivity() {
             firestoreOrderId = firestoreOrderId
         )
         updateParsedOrderJsonView(parsedOrderJson)
+        updateDebugCompareView(parsedOrderJson, rawScrapeText)
     }
 
     private fun updateUploadStatusViews(
@@ -223,6 +250,94 @@ class ManualScraperActivity : AppCompatActivity() {
             ?: getString(R.string.manual_scraper_upload_not_available)
     }
 
+    private fun updateDebugCompareView(parsedOrderJson: String?, rawScrapeText: String?) {
+        val rawSection = rawScrapeText
+            ?.takeIf { it.isNotBlank() }
+            ?.let { text ->
+                text.lines()
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n")
+            }
+            ?: getString(R.string.manual_scraper_upload_not_available)
+        val parsedSection = summarizeParsedItems(parsedOrderJson)
+        debugCompareValue.text = buildString {
+            append("RAW SCREEN TEXT\n")
+            append(rawSection)
+            append("\n\nPARSED ITEMS SUMMARY\n")
+            append(parsedSection)
+        }
+    }
+
+    private fun summarizeParsedItems(parsedOrderJson: String?): String {
+        if (parsedOrderJson.isNullOrBlank()) return getString(R.string.manual_scraper_upload_not_available)
+        return try {
+            val root = JSONObject(parsedOrderJson)
+            val orderId = root.optString("order_id", "Unknown")
+            val grandTotal = if (root.has("grand_total") && !root.isNull("grand_total")) {
+                root.optDouble("grand_total")
+            } else {
+                null
+            }
+            val items = root.optJSONArray("items")
+            val itemLines = mutableListOf<String>()
+            if (items != null) {
+                for (i in 0 until items.length()) {
+                    val item = items.optJSONObject(i) ?: continue
+                    val quantity = item.optInt("quantity", 1)
+                    val name = item.optString("name", "Unknown Item")
+                    val price = if (item.has("price") && !item.isNull("price")) {
+                        item.optDouble("price")
+                    } else {
+                        null
+                    }
+                    val note = item.optString("note", "").trim()
+                    itemLines.add(
+                        if (price != null) {
+                            "$quantity x $name (RM${"%.2f".format(price)})"
+                        } else {
+                            "$quantity x $name"
+                        }
+                    )
+                    if (note.isNotBlank()) {
+                        itemLines.add("  note: $note")
+                    }
+                }
+            }
+            buildString {
+                append("order_id: $orderId\n")
+                append("grand_total: ")
+                append(grandTotal?.let { "RM${"%.2f".format(it)}" } ?: "N/A")
+                append("\nitems:\n")
+                append(
+                    if (itemLines.isEmpty()) {
+                        "- none"
+                    } else {
+                        itemLines.joinToString("\n") { "- $it" }
+                    }
+                )
+            }
+        } catch (_: Exception) {
+            getString(R.string.manual_scraper_debug_parse_error)
+        }
+    }
+
+    private fun copyDebugText() {
+        val textToCopy = debugCompareValue.text?.toString().orEmpty()
+        if (textToCopy.isBlank()) {
+            Toast.makeText(this, getString(R.string.manual_scraper_copy_debug_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(
+                getString(R.string.manual_scraper_copy_debug_label),
+                textToCopy
+            )
+        )
+        Toast.makeText(this, getString(R.string.manual_scraper_copy_debug_success), Toast.LENGTH_SHORT).show()
+    }
+
     private fun launchMerchantApp(packageName: String) {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -245,6 +360,7 @@ class ManualScraperActivity : AppCompatActivity() {
         const val ACTION_MANUAL_SCRAPE_RESULT = "com.gastropos.relay.MANUAL_SCRAPE_RESULT"
         const val EXTRA_SUCCESS = "extra_success"
         const val EXTRA_MESSAGE = "extra_message"
+        const val EXTRA_FORCE_UPLOAD = "extra_force_upload"
         private const val REQUEST_TIMEOUT_MS = 3000L
         private const val PREFS = "relay_prefs"
         private const val KEY_LAST_UPLOAD_URL = "last_upload_url"

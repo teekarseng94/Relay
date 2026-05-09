@@ -37,12 +37,25 @@ object OrderTextParser {
     private val shopeeIdTokenPattern = Regex("#([A-Za-z0-9][A-Za-z0-9\\-]*)")
     private val shopeeFallbackNumericPattern = Regex("#([0-9][A-Za-z0-9\\-]{1,})")
     private val shopeeSystemRefPattern = Regex("^[A-Z][A-Z0-9]*-\\d{4,}$", RegexOption.IGNORE_CASE)
-    private val grabStartPattern = Regex("(?i)\\bitems\\s*for\\s*\\*{3}\\b")
+    private val grabStartPattern = Regex("(?i)\\bitems\\s*for\\s*\\*+\\b")
+    private val grabItemsCountStartPattern = Regex("(?i)\\b(\\d+)\\s+items?\\s+for\\s*\\*+\\b")
     private val grabItemSplitPattern = Regex("(?i)(\\d+)\\s*x\\s*")
     private val grabAnyPricePattern = Regex("(?i)(?:RM\\s*)?(-?\\d+(?:[.,]\\d{2}))")
+    private val grabInlineItemPattern = Regex(
+        "(?i)(\\d+)\\s*x\\s+(.+?)(?=(?:\\s+\\d+\\s*x\\s+)|(?:\\s+subtotal\\b)|(?:\\s+total\\b)|$)"
+    )
+    private val grabStandalonePricePattern = Regex("^\\s*(?:RM\\s*)?(-?\\d+(?:[.,]\\d{2}))\\s*$", RegexOption.IGNORE_CASE)
+    private val grabItemLinePattern = Regex(
+        "^\\s*(\\d+)\\s*x\\s+(.+?)(?:\\s+(?:RM\\s*)?(-?\\d+(?:[.,]\\d{2})))?\\s*$",
+        RegexOption.IGNORE_CASE
+    )
+    private val grabSectionEndPattern = Regex(
+        "(?i)\\b(subtotal|total|grand\\s*total|order\\s*amount|promotion\\s*subsidy|includes\\s*tax)\\b"
+    )
     private val grabPromoHealthyFruitPattern = Regex(
         "(?i)dapatkan\\s+healthy\\s+fruit.*?pesanan\\s+minimum\\s*rm\\s*\\d+(?:[.,]\\d{2})?"
     )
+    private val grabMinimumRmPattern = Regex("(?i)minimum\\s*rm\\s*\\d+(?:[.,]\\d{2})?")
     private val itemStartPattern = Regex("^\\s*(\\d+)\\s*x\\s+(.+?)\\s*$", RegexOption.IGNORE_CASE)
     private val priceOnlyPattern = Regex("^\\s*-?\\s*(?:RM\\s*)?(\\d+(?:[.,]\\d{2})?)\\s*$", RegexOption.IGNORE_CASE)
     private val noteLinePattern = Regex("^\\s*([-*\\u2022])\\s*(.+?)\\s*$")
@@ -127,12 +140,129 @@ object OrderTextParser {
 
     private fun parseGrabStream(rawText: String): List<ParsedOrderItem> {
         val text = stripGrabNoise(rawText)
+        val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+        if (lines.isEmpty()) return emptyList()
+
+        val anchorIndex = lines.indexOfFirst {
+            grabItemsCountStartPattern.containsMatchIn(it) || grabStartPattern.containsMatchIn(it)
+        }
+        val startIndex = when {
+            anchorIndex < 0 -> 0
+            // Some Grab UIs put "7 items for *" and all "1 x ..." tokens in the same line.
+            grabItemSplitPattern.containsMatchIn(lines[anchorIndex]) -> anchorIndex
+            else -> anchorIndex + 1
+        }
+        val endIndex = lines.withIndex().firstOrNull { (index, line) ->
+            index > startIndex && grabSectionEndPattern.containsMatchIn(line)
+        }?.index ?: lines.size
+        val orderSection = lines.subList(startIndex, endIndex)
+        val hasMergedMultiItemLine = orderSection.any { line ->
+            grabItemSplitPattern.findAll(line).count() > 1
+        }
+        if (hasMergedMultiItemLine) {
+            // Some Grab screens expose all items in one huge accessibility line.
+            // In that case line-by-line parsing collapses into a single fake item.
+            val inlineParsed = parseGrabFromInlineMergedText(orderSection.joinToString(" "))
+            if (inlineParsed.isNotEmpty()) return dedupeItems(inlineParsed)
+            return parseGrabBySegmentFallback(text)
+        }
+
+        val entries = mutableListOf<ParsedOrderItem>()
+        var current: MutableParsedItem? = null
+        val pendingNotes = mutableListOf<String>()
+
+        for (line in orderSection) {
+            val itemMatch = grabItemLinePattern.matchEntire(line)
+            if (itemMatch != null) {
+                current?.let {
+                    it.note = mergeNotes(it.note, pendingNotes)
+                    entries.add(it.toParsedOrderItem())
+                }
+                pendingNotes.clear()
+
+                val qty = itemMatch.groups[1]?.value?.toIntOrNull() ?: continue
+                val name = itemMatch.groups[2]?.value.orEmpty().trim()
+                val inlinePrice = normalizePrice(itemMatch.groups[3]?.value.orEmpty())
+                if (name.isBlank()) {
+                    current = null
+                    continue
+                }
+                current = MutableParsedItem(quantity = qty, name = name, price = inlinePrice)
+                continue
+            }
+
+            if (current != null) {
+                val standalonePriceMatch = grabStandalonePricePattern.matchEntire(line)
+                if (standalonePriceMatch != null && current!!.price == null) {
+                    current!!.price = normalizePrice(standalonePriceMatch.groups[1]?.value.orEmpty())
+                    current!!.note = mergeNotes(current!!.note, pendingNotes)
+                    entries.add(current!!.toParsedOrderItem())
+                    current = null
+                    pendingNotes.clear()
+                    continue
+                }
+
+                if (!isNoiseBetweenNameAndPrice(line) && !grabSectionEndPattern.containsMatchIn(line)) {
+                    pendingNotes.add(line)
+                }
+            }
+        }
+
+        current?.let {
+            it.note = mergeNotes(it.note, pendingNotes)
+            entries.add(it.toParsedOrderItem())
+        }
+
+        if (entries.isNotEmpty()) return dedupeItems(entries)
+
+        // Fallback: keep legacy segment parsing for unusual merged accessibility blobs.
+        val inlineParsed = parseGrabFromInlineMergedText(text)
+        if (inlineParsed.isNotEmpty()) return dedupeItems(inlineParsed)
+        return parseGrabBySegmentFallback(text)
+    }
+
+    private fun parseGrabFromInlineMergedText(text: String): List<ParsedOrderItem> {
+        if (text.isBlank()) return emptyList()
+        val compact = text.replace(Regex("\\s+"), " ").trim()
+        val entries = mutableListOf<ParsedOrderItem>()
+        for (match in grabInlineItemPattern.findAll(compact)) {
+            val qty = match.groups[1]?.value?.toIntOrNull() ?: continue
+            val segment = match.groups[2]?.value.orEmpty().trim()
+            if (segment.isBlank()) continue
+            val firstPriceMatch = grabAnyPricePattern.find(segment)
+            val name: String
+            val price: Double?
+            val note: String
+            if (firstPriceMatch != null) {
+                name = segment.substring(0, firstPriceMatch.range.first).trim(' ', '-', ':', '\t')
+                val pricing = extractGrabPriceAndNote(segment, firstPriceMatch)
+                price = pricing.first
+                note = pricing.second
+            } else {
+                name = segment.trim(' ', '-', ':', '\t')
+                price = null
+                note = ""
+            }
+            if (name.isNotBlank() && name.length > 1) {
+                entries.add(
+                    ParsedOrderItem(
+                        quantity = qty,
+                        name = name,
+                        price = price,
+                        note = note
+                    )
+                )
+            }
+        }
+        return entries
+    }
+
+    private fun parseGrabBySegmentFallback(text: String): List<ParsedOrderItem> {
         var itemBlob = grabStartPattern.find(text)?.let { text.substring(it.range.last + 1).trim() } ?: text
         val cutleryMatch = Regex("(?i)^\\s*(cutlery needed|no cutlery)\\b").find(itemBlob)
         if (cutleryMatch != null) {
             itemBlob = itemBlob.substring(cutleryMatch.range.last + 1).trim()
         }
-
         val starts = grabItemSplitPattern.findAll(itemBlob).toList()
         val entries = mutableListOf<ParsedOrderItem>()
         starts.forEachIndexed { index, itemStart ->
@@ -152,8 +282,9 @@ object OrderTextParser {
             val note: String
             if (priceMatch != null) {
                 name = segment.substring(0, priceMatch.range.first).trim(' ', '-', ':', '\t')
-                price = normalizePrice(priceMatch.groups[1]?.value.orEmpty())
-                note = segment.substring(priceMatch.range.last + 1).trim()
+                val pricing = extractGrabPriceAndNote(segment, priceMatch)
+                price = pricing.first
+                note = pricing.second
             } else {
                 name = segment.trim(' ', '-', ':', '\t')
                 price = null
@@ -165,6 +296,42 @@ object OrderTextParser {
             }
         }
         return dedupeItems(entries)
+    }
+
+    private fun mergeNotes(existing: String, pendingNotes: MutableList<String>): String {
+        val merged = (listOf(existing) + pendingNotes)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+        pendingNotes.clear()
+        return merged
+    }
+
+    private fun extractGrabPriceAndNote(segment: String, firstPriceMatch: MatchResult): Pair<Double?, String> {
+        val basePrice = normalizePrice(firstPriceMatch.groups[1]?.value.orEmpty())
+        val trailing = segment.substring(firstPriceMatch.range.last + 1).trim()
+        if (basePrice == null) return Pair(null, trailing)
+
+        var discount = 0.0
+        grabAnyPricePattern.findAll(trailing).forEach { match ->
+            val valueText = match.groups[1]?.value.orEmpty()
+            val value = normalizePrice(valueText) ?: return@forEach
+            val contextStart = (match.range.first - 16).coerceAtLeast(0)
+            val contextEnd = (match.range.last + 1 + 2).coerceAtMost(trailing.length)
+            val context = trailing.substring(contextStart, contextEnd).lowercase(Locale.ROOT)
+            if (grabMinimumRmPattern.containsMatchIn(context)) return@forEach
+            if (value < 0) discount += value
+        }
+        val finalPrice = (basePrice + discount).coerceAtLeast(0.0)
+        val cleanNote = trailing
+            .replace(grabPromoHealthyFruitPattern, " ")
+            .replace(grabMinimumRmPattern, " ")
+            .replace(Regex("[❌⭕⛔️🔻🔺🔸🔹'\"`]+"), " ")
+            .replace(Regex("(?i)\\bRM\\s*-?\\d+(?:[.,]\\d{2})?\\b"), " ")
+            .replace(Regex("(?<!\\w)-?\\d+(?:[.,]\\d{2})(?!\\w)"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return Pair(roundMoney(finalPrice), cleanNote)
     }
 
     private fun parseShopeeItems(text: String): List<ParsedOrderItem> {
@@ -332,10 +499,13 @@ object OrderTextParser {
 
     private fun stripGrabNoise(text: String): String {
         return text.lines()
-            .filter { line ->
-                val trimmed = line.trim()
-                trimmed.isNotBlank() && !grabPromoHealthyFruitPattern.containsMatchIn(trimmed)
+            .map { line ->
+                line.trim()
+                    .replace(grabPromoHealthyFruitPattern, " ")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
             }
+            .filter { it.isNotBlank() }
             .joinToString("\n")
     }
 

@@ -57,6 +57,7 @@ _RE_SECTION_END = re.compile(
 )
 _RE_ORDER_REF = re.compile(r"#([A-Z0-9\-]+)|\b(GF-[A-Z0-9\-]+)\b", re.IGNORECASE)
 _RE_GRAB_ORDER_ID = re.compile(r"\bGF-[A-Z0-9\-]+\b", re.IGNORECASE)
+_RE_BOOKING_ID = re.compile(r"(?i)\bbooking\s*id\b[:：]?\s*([A-Z0-9\-]+)\b")
 _RE_SHOPEE_ORDER_ID = re.compile(r"#(\d+)\b")
 _RE_SHOPEE_ID_TOKEN = re.compile(r"#([A-Za-z0-9][A-Za-z0-9\-]*)")
 _RE_SHOPEE_FALLBACK_NUMERIC_FIRST = re.compile(r"#([0-9][A-Za-z0-9\-]{1,})")
@@ -77,11 +78,17 @@ _SHOPEE_BLOCKED_PREFIXES: tuple[str, ...] = (
 # Any `XX-12345…` style reference (2+ letters, dash, 4+ digits) is a system id,
 # not a queue id. Catches MANUAL-1778206947272, REF-9988, SPX-2026XYZ etc.
 _RE_SHOPEE_SYSTEM_REF = re.compile(r"^[A-Z][A-Z0-9]*-\d{4,}$", re.IGNORECASE)
-_RE_GRAB_START = re.compile(r"(?i)\bitems\s*for\s*\*{3}\b")
+_RE_GRAB_START = re.compile(r"(?i)\bitems\s*for\s*\*+")
 _RE_GRAB_ITEM_SPLIT = re.compile(r"(?i)(\d+)\s*x\s*")
 _RE_GRAB_ANY_PRICE = re.compile(r"(?i)(?:RM\s*)?(-?\d+(?:[.,]\d{2}))")
+_RE_GRAB_SUBTOTAL = re.compile(
+    r"(?i)\bsubtotal\b\s*(?:RM|MYR)?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)"
+)
 _RE_GRAB_PROMO_HEALTHY_FRUIT = re.compile(
     r"(?i)dapatkan\s+healthy\s+fruit.*?pesanan\s+minimum\s*rm\s*\d+(?:[.,]\d{2})?"
+)
+_RE_GRAB_MODIFIER = re.compile(
+    r"(?i)\b(choice of [a-z ]+)\s+([a-z\u4e00-\u9fff ]+?)\s+(-?\d+(?:[.,]\d{2}))(?=(?:\s+choice of [a-z ]+)|$)"
 )
 _RE_GRAND_TOTAL_RM = re.compile(
     r"(?i)(?:^|[^\d])(?:grand\s*total|amount\s*due|pay(?:able)?)\s*[:：]?\s*(?:RM|MYR)?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)",
@@ -112,13 +119,17 @@ class ParsedOrderText:
     status: str = "COMPLETE_SCRAPE"
     calculated_total: float = 0.0
     grand_total: float | None = None
+    subtotal: float | None = None
+    booking_id: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
             "status": self.status,
+            "booking_id": self.booking_id,
             "items": self.items,
             "calculated_total": self.calculated_total,
             "grand_total": self.grand_total,
+            "subtotal": self.subtotal,
         }
 
 
@@ -205,10 +216,12 @@ def _strip_grab_noise(text: str) -> str:
         line = raw_line.strip()
         if not line:
             continue
-        # Ignore known Grab campaign promo text that occasionally appears in scrape payloads.
-        if _RE_GRAB_PROMO_HEALTHY_FRUIT.search(line):
-            continue
-        cleaned_lines.append(raw_line)
+        # Remove known promo sentence, but keep the rest of the line since long orders
+        # often arrive as a single merged accessibility line.
+        line = _RE_GRAB_PROMO_HEALTHY_FRUIT.sub(" ", line)
+        line = re.sub(r"\s+", " ", line).strip()
+        if line:
+            cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
 
 
@@ -337,11 +350,27 @@ def _parse_grab_stream(text: str) -> tuple[list[dict[str, Any]], str]:
         if not segment:
             continue
 
-        price_match = _RE_GRAB_ANY_PRICE.search(segment)
-        if price_match:
-            name = segment[: price_match.start()].strip(" -:\t")
-            price = _normalize_price(price_match.group(1))
-            trailing = segment[price_match.end() :].strip()
+        price_tokens: list[tuple[float, int, int, str]] = []
+        for token in _RE_GRAB_ANY_PRICE.finditer(segment):
+            value = _normalize_price(token.group(1))
+            if value is None:
+                continue
+            ctx = segment[max(0, token.start() - 18) : token.end() + 2].lower()
+            # Ignore promo threshold like "minimum RM40.00".
+            if "minimum rm" in ctx:
+                continue
+            price_tokens.append((value, token.start(), token.end(), token.group(1)))
+
+        discount_total = 0.0
+        if price_tokens:
+            base_price, base_start, base_end, _ = price_tokens[0]
+            name = segment[:base_start].strip(" -:\t")
+            trailing = segment[base_end:].strip()
+            discount_total = sum(v for v, _, _, _ in price_tokens[1:] if v < 0)
+            final_price = round(base_price + discount_total, 2)
+            if final_price < 0:
+                final_price = 0.0
+            price = final_price
         else:
             name = segment.strip(" -:\t")
             price = None
@@ -350,14 +379,35 @@ def _parse_grab_stream(text: str) -> tuple[list[dict[str, Any]], str]:
         if not name:
             continue
 
-        entries.append(
-            {
-                "quantity": int(qty_text),
-                "name": name,
-                "price": price,
-                "note": trailing,
-            }
-        )
+        modifiers: list[dict[str, Any]] = []
+        for mod in _RE_GRAB_MODIFIER.finditer(trailing):
+            mod_price = _normalize_price(mod.group(3))
+            modifiers.append(
+                {
+                    "name": mod.group(1).strip(),
+                    "value": mod.group(2).strip(),
+                    "price": mod_price,
+                }
+            )
+        note = re.sub(_RE_GRAB_MODIFIER, " ", trailing)
+        note = re.sub(_RE_GRAB_PROMO_HEALTHY_FRUIT, " ", note)
+        note = re.sub(r"[❌⭕⛔️🔻🔺🔸🔹'\"`]+", " ", note)
+        note = re.sub(r"(?i)\bchoice of [a-z ]+\b", " ", note)
+        note = re.sub(r"(?i)\bRM\s*-?\d+(?:[.,]\d{2})?\b", " ", note)
+        note = re.sub(r"(?<!\w)-?\d+(?:[.,]\d{2})(?!\w)", " ", note)
+        note = re.sub(r"\s+", " ", note).strip(" -:\t")
+
+        item = {
+            "quantity": int(qty_text),
+            "name": name,
+            "price": price,
+            "note": note,
+        }
+        if modifiers:
+            item["modifiers"] = modifiers
+        if discount_total < 0:
+            item["discount"] = round(discount_total, 2)
+        entries.append(item)
 
     return _dedupe_items(entries), order_note
 
@@ -379,6 +429,9 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             calculated_total=0.0,
             grand_total=None,
         )
+
+    booking_id_match = _RE_BOOKING_ID.search(text)
+    booking_id = booking_id_match.group(1) if booking_id_match else None
 
     # 1. Extract Order ID (e.g., #896 or GF-123). Skip system references like
     # #MANUAL-1778206947272 — the Shopee branch below will pick the real queue id
@@ -402,6 +455,10 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             order_id = grab_id_match.group(0).upper()
         grab_items, order_note = _parse_grab_stream(text)
         grand_total = _extract_grand_total(text)
+        subtotal = None
+        subtotal_match = _RE_GRAB_SUBTOTAL.search(text)
+        if subtotal_match:
+            subtotal = _normalize_price(subtotal_match.group(1))
         calculated_total = _calculate_items_total(grab_items)
         status = (
             "INCOMPLETE_SCRAPE"
@@ -418,6 +475,8 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             status=status,
             calculated_total=calculated_total,
             grand_total=grand_total,
+            subtotal=subtotal,
+            booking_id=booking_id,
         )
 
     # Shopee identification rule: text contains #<digits> (e.g. #972, #72, #18).
@@ -550,6 +609,8 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             status=status,
             calculated_total=calculated_total,
             grand_total=final_total,
+            subtotal=None,
+            booking_id=booking_id,
         )
     except Exception as e:
         logger.exception("Shopee parse fallback: %s", e)
@@ -564,6 +625,8 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             status="INCOMPLETE_SCRAPE",
             calculated_total=0.0,
             grand_total=fallback_total,
+            subtotal=None,
+            booking_id=booking_id,
         )
 
 

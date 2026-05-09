@@ -13,5 +13,6 @@ data class RelayOrderPayload(
     val total: String?,
     val items: List<OrderItem>,
     val rawTexts: List<String>,
-    val scrapedAtEpochMs: Long
+    val scrapedAtEpochMs: Long,
+    val forceUpload: Boolean = false
 )

@@ -22,10 +22,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.gastropos.relay" />
+                  <option name="mobileSdkAppId" value="1:121649847365:android:520b26eb0cf0effe51172c" />
+                  <option name="projectId" value="desapetaling-53381" />
+                  <option name="projectNumber" value="121649847365" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

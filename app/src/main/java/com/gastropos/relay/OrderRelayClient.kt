@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 object OrderRelayClient {
     private const val FIRESTORE_COLLECTION = "orders"
@@ -26,7 +27,7 @@ object OrderRelayClient {
     fun send(context: Context, payload: RelayOrderPayload) {
         val appContext = context.applicationContext
         val destination = getRelayUrl(appContext)
-        val parsedOrderJson = try {
+        val buildResult = try {
             buildPosOrderJson(payload)
         } catch (jsonError: Exception) {
             Log.e(
@@ -43,8 +44,24 @@ object OrderRelayClient {
             )
             return
         }
+        val parsedOrderJson = buildResult.json
 
-        persistParsedOrderJson(appContext, parsedOrderJson.toString(2))
+        val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
+        persistParsedOrderJson(appContext, parsedOrderJson.toString(2), rawTextCombined)
+
+        val scrapeValidationFailure = detectScrapeValidationFailure(buildResult, rawTextCombined, payload)
+        if (!payload.forceUpload && scrapeValidationFailure != null) {
+            val statusMessage = "Scrape validation failed (upload skipped): $scrapeValidationFailure"
+            Log.w(TAG, "Skipping Firestore upload for ${payload.orderId}: $statusMessage")
+            persistUploadStatus(
+                appContext,
+                relayUrl = destination,
+                status = statusMessage,
+                success = false,
+                firestoreOrderId = null
+            )
+            return
+        }
 
         val orderId = parsedOrderJson.optString("order_id", payload.orderId)
         val documentId = orderId.toFirestoreDocumentId()
@@ -64,6 +81,7 @@ object OrderRelayClient {
                     .set(orderData)
                     .await()
 
+                OrderRepository.markProcessed(appContext, orderId)
                 Log.i(TAG, "Firestore upload succeeded: $FIRESTORE_COLLECTION/$documentId")
                 persistUploadStatus(
                     appContext,
@@ -106,9 +124,44 @@ object OrderRelayClient {
             ?.takeIf { it.isNotBlank() }
     }
 
+    fun getLastRawScrapeText(context: Context): String? {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_LAST_RAW_SCRAPE_TEXT, null)
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    fun forceUploadLastCaptured(context: Context): ForceUploadResult {
+        val raw = getLastRawScrapeText(context.applicationContext)
+            ?: return ForceUploadResult(false, "No cached raw scrape text available yet.")
+        val parsed = OrderTextParser.parse_order_text(raw)
+        val orderId = parsed.orderId.takeUnless { it.equals("Unknown", ignoreCase = true) }
+            ?: Regex("\\bGF-[A-Z0-9\\-]+\\b", RegexOption.IGNORE_CASE).find(raw)?.value
+            ?: "MANUAL-${System.currentTimeMillis()}"
+        val source = if (orderId.startsWith("GF-", ignoreCase = true)) "grab" else "shopee"
+        val items = parsed.items.map { parsedItem ->
+            OrderItem(
+                name = parsedItem.name,
+                quantity = parsedItem.quantity,
+                price = parsedItem.price?.let { String.format(Locale.ROOT, "RM%.2f", it) }
+            )
+        }
+        val payload = RelayOrderPayload(
+            source = source,
+            sourcePackage = if (source == "grab") "com.grab.merchant" else "com.shopeepay.merchant.my",
+            orderId = orderId,
+            total = parsed.grandTotal?.let { String.format(Locale.ROOT, "RM%.2f", it) },
+            items = items,
+            rawTexts = raw.lines().filter { it.isNotBlank() },
+            scrapedAtEpochMs = System.currentTimeMillis(),
+            forceUpload = true
+        )
+        send(context.applicationContext, payload)
+        return ForceUploadResult(true, "Force upload queued for order $orderId")
+    }
+
     fun recordParsedOrderPreview(context: Context, payload: RelayOrderPayload) {
         val parsedOrderJson = try {
-            buildPosOrderJson(payload).toString(2)
+            buildPosOrderJson(payload).json.toString(2)
         } catch (error: Exception) {
             JSONObject().apply {
                 put("order_id", payload.orderId)
@@ -125,10 +178,11 @@ object OrderRelayClient {
                 put("parser_status", "Preview fallback: ${error.message ?: "parser unavailable"}")
             }.toString(2)
         }
-        persistParsedOrderJson(context.applicationContext, parsedOrderJson)
+        val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
+        persistParsedOrderJson(context.applicationContext, parsedOrderJson, rawTextCombined)
     }
 
-    private fun buildPosOrderJson(payload: RelayOrderPayload): JSONObject {
+    private fun buildPosOrderJson(payload: RelayOrderPayload): PosBuildResult {
         val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
         val parsedOrder = OrderTextParser.parse_order_text(rawTextCombined)
         val orderId = parsedOrder.orderId
@@ -144,7 +198,7 @@ object OrderRelayClient {
             }
         val grandTotal = parsedOrder.grandTotal ?: extractMoney(payload.total)
 
-        return JSONObject().apply {
+        val json = JSONObject().apply {
             put("order_id", orderId)
             put("grand_total", grandTotal ?: JSONObject.NULL)
             put("items", JSONArray().apply {
@@ -160,6 +214,47 @@ object OrderRelayClient {
                 }
             })
         }
+        return PosBuildResult(
+            json = json,
+            parsedOrder = parsedOrder
+        )
+    }
+
+    private fun detectScrapeValidationFailure(
+        buildResult: PosBuildResult,
+        rawTextCombined: String,
+        payload: RelayOrderPayload
+    ): String? {
+        val parsed = buildResult.parsedOrder
+        val parsedItems = parsed.items
+        if (parsedItems.isEmpty()) {
+            return "no parsed items"
+        }
+        if (parsed.status == "INCOMPLETE_SCRAPE") {
+            return "parser marked incomplete scrape"
+        }
+
+        val sourceIsGrab = payload.source.equals("grab", ignoreCase = true) ||
+            payload.sourcePackage.contains("grab", ignoreCase = true)
+        if (!sourceIsGrab) return null
+
+        val expectedItemCount = ITEM_LINE_PATTERN.findAll(rawTextCombined).count()
+        if (expectedItemCount >= 2 && parsedItems.size < expectedItemCount) {
+            return "parsed ${parsedItems.size} items but detected about $expectedItemCount item lines"
+        }
+
+        if (parsedItems.size == 1) {
+            val single = parsedItems.first()
+            val singlePrice = single.price ?: 0.0
+            val grandTotal = parsed.grandTotal
+            val nameLooksLikeOrderId = single.name.contains(parsed.orderId, ignoreCase = true) ||
+                single.name.contains(payload.orderId, ignoreCase = true)
+            if (nameLooksLikeOrderId && grandTotal != null && grandTotal > (singlePrice + 1.0)) {
+                return "single parsed item looks like order-id placeholder (${single.name})"
+            }
+        }
+
+        return null
     }
 
     private fun buildFirestoreOrderData(
@@ -190,16 +285,18 @@ object OrderRelayClient {
             ?.toDoubleOrNull()
     }
 
-    private fun persistParsedOrderJson(context: Context, parsedOrderJson: String) {
+    private fun persistParsedOrderJson(context: Context, parsedOrderJson: String, rawScrapeText: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_LAST_PARSED_ORDER_JSON, parsedOrderJson)
+            .putString(KEY_LAST_RAW_SCRAPE_TEXT, rawScrapeText)
             .apply()
 
         context.sendBroadcast(
             Intent(ACTION_UPLOAD_STATUS_UPDATED).apply {
                 `package` = context.packageName
                 putExtra(EXTRA_PARSED_ORDER_JSON, parsedOrderJson)
+                putExtra(EXTRA_RAW_SCRAPE_TEXT, rawScrapeText)
             }
         )
     }
@@ -232,6 +329,9 @@ object OrderRelayClient {
                 getLastParsedOrderJson(context)?.let {
                     putExtra(EXTRA_PARSED_ORDER_JSON, it)
                 }
+                getLastRawScrapeText(context)?.let {
+                    putExtra(EXTRA_RAW_SCRAPE_TEXT, it)
+                }
             }
         )
     }
@@ -243,6 +343,8 @@ object OrderRelayClient {
     private const val KEY_LAST_UPLOAD_SUCCESS = "last_upload_success"
     private const val KEY_LAST_FIRESTORE_ORDER_ID = "last_firestore_order_id"
     private const val KEY_LAST_PARSED_ORDER_JSON = "last_parsed_order_json"
+    private const val KEY_LAST_RAW_SCRAPE_TEXT = "last_raw_scrape_text"
+    private val ITEM_LINE_PATTERN = Regex("(?i)\\b\\d+\\s*x\\s+")
     private val MONEY_PATTERN = Regex("(?i)(?:RM|MYR)?\\s*(-?\\d+(?:[.,]\\d{2})?)")
 
     const val ACTION_UPLOAD_STATUS_UPDATED = "com.gastropos.relay.UPLOAD_STATUS_UPDATED"
@@ -252,6 +354,7 @@ object OrderRelayClient {
     const val EXTRA_UPLOAD_SUCCESS = "extra_upload_success"
     const val EXTRA_FIRESTORE_ORDER_ID = "extra_firestore_order_id"
     const val EXTRA_PARSED_ORDER_JSON = "extra_parsed_order_json"
+    const val EXTRA_RAW_SCRAPE_TEXT = "extra_raw_scrape_text"
 
     private fun String.toFirestoreDocumentId(): String? {
         val cleaned = trim()
@@ -284,5 +387,15 @@ object OrderRelayClient {
         if (!has(key) || isNull(key)) return null
         return optDouble(key).takeUnless { it.isNaN() }
     }
+
+    private data class PosBuildResult(
+        val json: JSONObject,
+        val parsedOrder: ParsedOrderText
+    )
+
+    data class ForceUploadResult(
+        val success: Boolean,
+        val message: String
+    )
 
 }

@@ -34,6 +34,16 @@
     <string name="manual_scraper_parsed_order_label">Parsed order sent to POS</string>
     <string name="manual_scraper_parsed_order_hint">This is the order information captured from the merchant screen before upload.</string>
     <string name="manual_scraper_parsed_order_waiting">Waiting for parsed order data...</string>
+    <string name="manual_scraper_debug_label">Raw vs parsed debug view</string>
+    <string name="manual_scraper_debug_hint">Compare captured raw screen text against parsed item output to diagnose scraper misses.</string>
+    <string name="manual_scraper_debug_waiting">Waiting for debug preview...</string>
+    <string name="manual_scraper_debug_parse_error">Unable to parse latest parsed-order JSON.</string>
+    <string name="manual_scraper_copy_debug_button">Copy debug text</string>
+    <string name="manual_scraper_copy_debug_label">Relay debug text</string>
+    <string name="manual_scraper_copy_debug_success">Debug text copied.</string>
+    <string name="manual_scraper_copy_debug_empty">No debug text available yet.</string>
+    <string name="manual_scraper_force_upload_button">Force upload this order</string>
+    <string name="manual_scraper_force_upload_waiting">Force-upload requested. Sending this order to Firestore...</string>
     <string name="manual_scraper_upload_title">Last upload details</string>
     <string name="manual_scraper_upload_url_label">Destination</string>
     <string name="manual_scraper_upload_time_label">Last upload time</string>
