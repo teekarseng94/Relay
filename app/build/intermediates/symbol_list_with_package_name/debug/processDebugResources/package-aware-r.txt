@@ -1286,6 +1286,10 @@ color bright_foreground_inverse_material_dark
 color bright_foreground_inverse_material_light
 color bright_foreground_material_dark
 color bright_foreground_material_light
+color browser_actions_bg_grey
+color browser_actions_divider_color
+color browser_actions_text_color
+color browser_actions_title_color
 color button_material_dark
 color button_material_light
 color call_notification_answer_color
@@ -2113,6 +2117,8 @@ dimen abc_text_size_subtitle_material_toolbar
 dimen abc_text_size_title_material
 dimen abc_text_size_title_material_toolbar
 dimen appcompat_dialog_background_inset
+dimen browser_actions_context_menu_max_width
+dimen browser_actions_context_menu_min_padding
 dimen cardview_compat_inset_shadow
 dimen cardview_default_elevation
 dimen cardview_default_radius
@@ -3134,6 +3140,11 @@ id beginning
 id blocking
 id bottom
 id bounce
+id browser_actions_header_text
+id browser_actions_menu_item_icon
+id browser_actions_menu_item_text
+id browser_actions_menu_items
+id browser_actions_menu_view
 id buttonPanel
 id cancel_button
 id center
@@ -3396,9 +3407,6 @@ id progress_horizontal
 id radio
 id ratio
 id rectangles
-id relayConnectionStatusText
-id relayUrlInput
-id relayUrlLabel
 id report_drawn
 id reverseSawtooth
 id right
@@ -3407,7 +3415,6 @@ id right_icon
 id right_side
 id rounded
 id row_index_key
-id saveRelayUrlButton
 id save_non_transition_alpha
 id save_overlay_view
 id sawtooth
@@ -3482,7 +3489,6 @@ id tag_unhandled_key_event_manager
 id tag_unhandled_key_listeners
 id tag_window_insets_animation_callback
 id testGrabButton
-id testRelayUrlButton
 id testShopeeButton
 id text
 id text2
@@ -3654,6 +3660,8 @@ layout abc_select_dialog_material
 layout abc_tooltip
 layout activity_main
 layout activity_manual_scraper
+layout browser_actions_context_menu_page
+layout browser_actions_context_menu_row
 layout custom_dialog
 layout design_bottom_navigation_item
 layout design_bottom_sheet_dialog
@@ -3804,11 +3812,15 @@ string common_google_play_services_wear_update_text
 string common_open_on_phone
 string common_signin_button_text
 string common_signin_button_text_long
+string copy_toast_msg
 string error_a11y_label
 string error_icon_content_description
 string exposed_dropdown_menu_content_description
 string fab_transformation_scrim_behavior
 string fab_transformation_sheet_behavior
+string fallback_menu_item_copy_link
+string fallback_menu_item_open_in_browser
+string fallback_menu_item_share_link
 string gcm_defaultSenderId
 string google_api_key
 string google_app_id
@@ -3953,14 +3965,6 @@ string path_password_eye_mask_strike_through
 string path_password_eye_mask_visible
 string path_password_strike_through
 string project_id
-string relay_connection_status_idle
-string relay_connection_status_testing
-string relay_url_hint
-string relay_url_invalid
-string relay_url_label
-string relay_url_required
-string relay_url_saved
-string save_relay_url_button
 string search_menu_title
 string searchbar_scrolling_view_behavior
 string searchview_clear_text_content_description
@@ -3974,7 +3978,6 @@ string test_broadcast_sent
 string test_grab_button
 string test_launch_failed
 string test_launch_success
-string test_relay_url_button
 string test_shopee_button
 style AlertDialog_AppCompat
 style AlertDialog_AppCompat_Light
@@ -5252,4 +5255,5 @@ styleable ViewBackgroundHelper android_background backgroundTint backgroundTintM
 styleable ViewPager2 android_orientation
 styleable ViewStubCompat android_id android_layout android_inflatedId
 xml accessibility_config
+xml image_share_filepaths
 xml network_security_config

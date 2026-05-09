@@ -2,94 +2,82 @@ package com.gastropos.relay
 
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 object OrderRelayClient {
-    private const val DEFAULT_RELAY_URL = "http://192.168.5.32:8765/api/v1/external-orders"
+    private const val FIRESTORE_COLLECTION = "orders"
     private const val TAG = "OrderRelayClient"
-    private val executor = Executors.newSingleThreadExecutor()
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(45, TimeUnit.SECONDS)
-        .build()
+    private val firestore by lazy { FirebaseFirestore.getInstance() }
+
+    // SupervisorJob so a single failed upload doesn't cancel the scope and
+    // kill subsequent uploads. IO dispatcher because Firebase Tasks → coroutine
+    // bridge ultimately blocks until the network round-trip resolves.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun send(context: Context, payload: RelayOrderPayload) {
         val appContext = context.applicationContext
-        val relayUrl = getRelayUrl(appContext)
-        executor.execute {
-            val parsedOrderJson = try {
-                buildPosOrderJson(payload)
-            } catch (jsonError: Exception) {
-                Log.e(
-                    TAG,
-                    "Failed to build JSON for order ${payload.orderId}: ${jsonError.message}",
-                    jsonError
-                )
-                persistUploadStatus(
-                    appContext,
-                    relayUrl = relayUrl,
-                    status = "JSON build failed: ${jsonError.message ?: "unknown error"}",
-                    success = false,
-                    firestoreOrderId = null
-                )
-                return@execute
-            }
+        val destination = getRelayUrl(appContext)
+        val parsedOrderJson = try {
+            buildPosOrderJson(payload)
+        } catch (jsonError: Exception) {
+            Log.e(
+                TAG,
+                "Failed to build JSON for order ${payload.orderId}: ${jsonError.message}",
+                jsonError
+            )
+            persistUploadStatus(
+                appContext,
+                relayUrl = destination,
+                status = "JSON build failed: ${jsonError.message ?: "unknown error"}",
+                success = false,
+                firestoreOrderId = null
+            )
+            return
+        }
 
-            persistParsedOrderJson(appContext, parsedOrderJson.toString(2))
+        persistParsedOrderJson(appContext, parsedOrderJson.toString(2))
 
-            val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
-            val requestBody = buildRelayRequestBody(payload, parsedOrderJson, rawTextCombined)
-            val request = Request.Builder()
-                .url(relayUrl)
-                .addHeader("Content-Type", "application/json")
-                .post(
-                    requestBody.toString()
-                        .toRequestBody("application/json; charset=utf-8".toMediaType())
-                )
-                .build()
+        val orderId = parsedOrderJson.optString("order_id", payload.orderId)
+        val documentId = orderId.toFirestoreDocumentId()
+            ?: firestore.collection(FIRESTORE_COLLECTION).document().id
+        val orderData = buildFirestoreOrderData(payload, parsedOrderJson, documentId)
 
+        scope.launch {
             try {
-                client.newCall(request).execute().use { response: Response ->
-                    val responseBody = response.body?.string().orEmpty()
-                    if (response.isSuccessful) {
-                        persistUploadStatus(
-                            appContext,
-                            relayUrl = relayUrl,
-                            status = "HTTP ${response.code} OK | response: ${responseBody.compactForStatus(220)}",
-                            success = true,
-                            firestoreOrderId = null
-                        )
-                        return@execute
-                    }
-                    Log.e(TAG, "Relay upload failed: HTTP ${response.code}, body=$responseBody")
-                    persistUploadStatus(
-                        appContext,
-                        relayUrl = relayUrl,
-                        status = "HTTP ${response.code} failed | response: ${responseBody.compactForStatus(220)}",
-                        success = false,
-                        firestoreOrderId = null
-                    )
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "Relay upload failed for order ${payload.orderId}", error)
+                // Make sure we're signed in as the relay user with the
+                // gastropos-relay claim BEFORE attempting the write.
+                // The Firestore Security Rules in rdp-pos reject writes
+                // from unauthenticated callers.
+                RelayAuth.ensureSignedIn()
+
+                firestore.collection(FIRESTORE_COLLECTION)
+                    .document(documentId)
+                    .set(orderData)
+                    .await()
+
+                Log.i(TAG, "Firestore upload succeeded: $FIRESTORE_COLLECTION/$documentId")
                 persistUploadStatus(
                     appContext,
-                    relayUrl = relayUrl,
-                    status = "Network error: ${error.message ?: "unknown error"}",
+                    relayUrl = destination,
+                    status = "Firestore upload successful: $FIRESTORE_COLLECTION/$documentId",
+                    success = true,
+                    firestoreOrderId = documentId
+                )
+            } catch (error: Exception) {
+                Log.e(TAG, "Firestore upload failed for order $orderId", error)
+                persistUploadStatus(
+                    appContext,
+                    relayUrl = destination,
+                    status = "Firestore upload failed: ${error.message ?: "unknown error"}",
                     success = false,
                     firestoreOrderId = null
                 )
@@ -109,43 +97,7 @@ object OrderRelayClient {
     }
 
     fun getRelayUrl(context: Context): String {
-        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_RELAY_URL_OVERRIDE, null)
-            ?.trim()
-        return saved?.takeIf { it.isNotBlank() } ?: DEFAULT_RELAY_URL
-    }
-
-    fun setRelayUrl(context: Context, relayUrl: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_RELAY_URL_OVERRIDE, relayUrl.trim())
-            .apply()
-    }
-
-    fun testBackendConnection(context: Context, onResult: (Boolean, String) -> Unit) {
-        val relayUrl = getRelayUrl(context.applicationContext)
-        val healthUrl = relayUrl.toHealthUrl()
-        val request = Request.Builder()
-            .url(healthUrl)
-            .get()
-            .build()
-        executor.execute {
-            try {
-                client.newCall(request).execute().use { response ->
-                    val responseBody = response.body?.string().orEmpty()
-                    val message = if (response.isSuccessful) {
-                        "Reachable: HTTP ${response.code} (${healthUrl})"
-                    } else {
-                        "Unreachable: HTTP ${response.code} (${healthUrl}) ${responseBody.compactForStatus(120)}"
-                    }
-                    mainHandler.post { onResult(response.isSuccessful, message) }
-                }
-            } catch (error: Exception) {
-                mainHandler.post {
-                    onResult(false, "Connection failed (${healthUrl}): ${error.message ?: "unknown error"}")
-                }
-            }
-        }
+        return "Firestore collection: $FIRESTORE_COLLECTION"
     }
 
     fun getLastParsedOrderJson(context: Context): String? {
@@ -210,18 +162,24 @@ object OrderRelayClient {
         }
     }
 
-    private fun buildRelayRequestBody(
+    private fun buildFirestoreOrderData(
         payload: RelayOrderPayload,
         parsedOrderJson: JSONObject,
-        rawTextCombined: String
-    ): JSONObject {
-        return JSONObject().apply {
-            put("source", "com.gastropos.relay")
-            put("order_id", parsedOrderJson.optString("order_id", payload.orderId))
-            put("raw_text", rawTextCombined)
-            put("items", parsedOrderJson.optJSONArray("items") ?: JSONArray())
-            put("grand_total", parsedOrderJson.opt("grand_total"))
-        }
+        documentId: String
+    ): Map<String, Any?> {
+        val rawTextCombined = payload.rawTexts.joinToString("\n").trim()
+        return mapOf(
+            "document_id" to documentId,
+            "order_id" to parsedOrderJson.optString("order_id", payload.orderId),
+            "items" to parsedOrderJson.optJSONArray("items").toItemMaps(),
+            "grand_total" to parsedOrderJson.nullableDouble("grand_total"),
+            "source" to payload.source,
+            "source_package" to payload.sourcePackage,
+            "raw_text" to rawTextCombined,
+            "raw_texts" to payload.rawTexts,
+            "scraped_at_epoch_ms" to payload.scrapedAtEpochMs,
+            "created_at" to FieldValue.serverTimestamp()
+        )
     }
 
     private fun extractMoney(value: String?): Double? {
@@ -279,7 +237,6 @@ object OrderRelayClient {
     }
 
     private const val PREFS = "relay_prefs"
-    private const val KEY_RELAY_URL_OVERRIDE = "relay_url_override"
     private const val KEY_LAST_UPLOAD_URL = "last_upload_url"
     private const val KEY_LAST_UPLOAD_TIME_MS = "last_upload_time_ms"
     private const val KEY_LAST_UPLOAD_STATUS = "last_upload_status"
@@ -296,18 +253,36 @@ object OrderRelayClient {
     const val EXTRA_FIRESTORE_ORDER_ID = "extra_firestore_order_id"
     const val EXTRA_PARSED_ORDER_JSON = "extra_parsed_order_json"
 
-    private fun String.compactForStatus(maxLength: Int): String {
-        val singleLine = replace("\\s+".toRegex(), " ").trim()
-        if (singleLine.isBlank()) return "empty"
-        return if (singleLine.length <= maxLength) singleLine else singleLine.take(maxLength - 3) + "..."
+    private fun String.toFirestoreDocumentId(): String? {
+        val cleaned = trim()
+            .takeUnless { it.isBlank() || it.equals("Unknown", ignoreCase = true) }
+            ?.replace("/", "-")
+            ?.take(120)
+            ?: return null
+        if (cleaned == "." || cleaned == "..") return null
+        return cleaned
     }
 
-    private fun String.toHealthUrl(): String {
-        return if (endsWith("/api/v1/external-orders")) {
-            removeSuffix("/api/v1/external-orders") + "/health"
-        } else {
-            trimEnd('/') + "/health"
+    private fun JSONArray?.toItemMaps(): List<Map<String, Any?>> {
+        if (this == null) return emptyList()
+        val items = mutableListOf<Map<String, Any?>>()
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            items.add(
+                mapOf(
+                    "quantity" to item.optInt("quantity", 1),
+                    "name" to item.optString("name", ""),
+                    "price" to item.nullableDouble("price"),
+                    "note" to item.optString("note", "").takeIf { it.isNotBlank() }
+                )
+            )
         }
+        return items
+    }
+
+    private fun JSONObject.nullableDouble(key: String): Double? {
+        if (!has(key) || isNull(key)) return null
+        return optDouble(key).takeUnless { it.isNaN() }
     }
 
 }

@@ -1,26 +1,26 @@
 [
     {
-        "merged": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-debug-5:\\layout_activity_manual_scraper.xml.flat",
-        "source": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-main-7:\\layout\\activity_manual_scraper.xml"
+        "merged": "com.gastropos.relay.app-debug-36:/xml_accessibility_config.xml.flat",
+        "source": "com.gastropos.relay.app-main-38:/xml/accessibility_config.xml"
     },
     {
-        "merged": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-debug-5:\\xml_accessibility_config.xml.flat",
-        "source": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-main-7:\\xml\\accessibility_config.xml"
+        "merged": "com.gastropos.relay.app-debug-36:/xml_network_security_config.xml.flat",
+        "source": "com.gastropos.relay.app-main-38:/xml/network_security_config.xml"
     },
     {
-        "merged": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-debug-5:\\layout_activity_main.xml.flat",
-        "source": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-main-7:\\layout\\activity_main.xml"
+        "merged": "com.gastropos.relay.app-debug-36:/layout_activity_main.xml.flat",
+        "source": "com.gastropos.relay.app-main-38:/layout/activity_main.xml"
     },
     {
-        "merged": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-debug-5:\\drawable_rounded_button_bg.xml.flat",
-        "source": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-main-7:\\drawable\\rounded_button_bg.xml"
+        "merged": "com.gastropos.relay.app-debug-36:/drawable_rounded_button_bg.xml.flat",
+        "source": "com.gastropos.relay.app-main-38:/drawable/rounded_button_bg.xml"
     },
     {
-        "merged": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-debug-5:\\layout_floating_sync_button.xml.flat",
-        "source": "D:\\Users\\User\\Gradle\\daemon\\9.0.0\\com.gastropos.relay.app-main-7:\\layout\\floating_sync_button.xml"
+        "merged": "com.gastropos.relay.app-debug-36:/layout_activity_manual_scraper.xml.flat",
+        "source": "com.gastropos.relay.app-main-38:/layout/activity_manual_scraper.xml"
     },
     {
-        "merged": "com.gastropos.relay.app-debug-5:/xml_network_security_config.xml.flat",
-        "source": "com.gastropos.relay.app-main-7:/xml/network_security_config.xml"
+        "merged": "com.gastropos.relay.app-debug-36:/layout_floating_sync_button.xml.flat",
+        "source": "com.gastropos.relay.app-main-38:/layout/floating_sync_button.xml"
     }
 ]
