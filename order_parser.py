@@ -49,8 +49,9 @@ _UI_ITEM_BLOCKLIST = frozenset({"back", "confirm", "cancel", "home"})
 _RE_ITEM_START = re.compile(r"^\s*(\d+)\s*x\s+(.+?)\s*$", re.IGNORECASE)
 _RE_PRICE_ONLY = re.compile(r"^\s*-?\s*(?:RM\s*)?(\d+(?:[.,]\d{2})?)\s*$", re.IGNORECASE)
 _RE_NOTE_LINE = re.compile(r"^\s*([-*•])\s*(.+?)\s*$")
+# Avoid matching "item" inside "item(s)" in footer lines like "Total 6 item(s)".
 _RE_SECTION_START = re.compile(
-    r"(?i)\b(order\s*summary|items?|item\s*list|your\s*items?|order\s*items?)\b"
+    r"(?i)\b(order\s*summary|items\b|item\s*list|your\s*items\b|order\s*items\b)\b"
 )
 _RE_SECTION_END = re.compile(
     r"(?i)\b(order\s*amount|promotion\s*subsidy|subtotal|total|grand\s*total|discount|delivery\s*fee|service\s*fee|paid\s*with)\b"
@@ -97,10 +98,34 @@ _RE_ORDER_AMOUNT_RM = re.compile(
     r"(?i)\border\s*amount\b[^\n\r]{0,40}?(-?)\s*(?:RM|MYR)?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)"
 )
 _RE_PROMOTION_SUBSIDY_RM = re.compile(
-    r"(?i)\bpromotion\s*subsidy\b[^\n\r]{0,40}?(-?)\s*(?:RM|MYR)?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)"
+    r"(?i)\bpromotion\s*subsidy\b[^\n\r]{0,120}?(-?)\s*(?:RM|MYR)?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)"
+)
+_RE_PROMOTION_SUBSIDY_LINE = re.compile(
+    r"(?i)^\s*promotion\s*subsidy\s*[:-]?\s*(-?)\s*(?:RM|MYR)?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*$"
 )
 _RE_META_LINE = re.compile(
     r"(?i)^\s*(?:add-?on|addon|modifier|option|note|special\s+instruction|remarks?)\b[:：-]?\s*$"
+)
+# Shopee merchant: grey lines under items often start with "-" (addon) or "*" (note).
+_RE_SHOPEE_ITEM_PRICE_LINE = re.compile(
+    r"^\s*(?:RM|MYR)\s*(\d+(?:[.,]\d{2})?)\s*$",
+    re.IGNORECASE,
+)
+# Same-line price after item name (some layouts).
+_RE_SHOPEE_ITEM_INLINE_PRICE = re.compile(
+    r"(?i)^\s*(\d+)\s*x\s+(.+?)\s+(?:RM|MYR)\s*(\d+(?:[.,]\d{2})?)\s*$",
+)
+# Structured addon/modifier: "- Addon BIG Rice: BIG RICE" or "- Choice of Temperature: Iced"
+_RE_SHOPEE_MODIFIER_KV = re.compile(r"^\s*-\s*(.+?):\s*(.+?)\s*$")
+_RE_SHOPEE_NOTE_STAR = re.compile(r"^\s*\*\s*(?:Note:\s*)?(.+?)\s*$", re.IGNORECASE)
+# Badge text sometimes glued to item name on same line
+_RE_SHOPEE_NAME_BADGES = re.compile(
+    r"\s+(Flash\s+Sales|Hot\s+Deal|Best\s+Seller|Popular)\s*$",
+    re.IGNORECASE,
+)
+# Payable total line: "Total 6 item(s)" ... or line with RM near Total
+_RE_SHOPEE_PAYABLE_TOTAL = re.compile(
+    r"(?i)\btotal\b[^\n]{0,80}?(?:RM|MYR)\s*(\d+(?:[.,]\d{3})*(?:[.,]\d{2})?)",
 )
 _SHOPEE_IGNORED_IDS = {"details", "order", "info"}
 logger = logging.getLogger(__name__)
@@ -121,6 +146,8 @@ class ParsedOrderText:
     grand_total: float | None = None
     subtotal: float | None = None
     booking_id: str | None = None
+    order_amount: float | None = None  # Shopee: subtotal before subsidy
+    promotion_subsidy: float | None = None  # Shopee: negative promo amount
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -130,6 +157,8 @@ class ParsedOrderText:
             "calculated_total": self.calculated_total,
             "grand_total": self.grand_total,
             "subtotal": self.subtotal,
+            "order_amount": self.order_amount,
+            "promotion_subsidy": self.promotion_subsidy,
         }
 
 
@@ -158,16 +187,36 @@ def _extract_order_amount(text: str) -> float | None:
 
 def _extract_promotion_subsidy(text: str) -> float | None:
     for line in text.splitlines():
-        m = _RE_PROMOTION_SUBSIDY_RM.search(line)
+        stripped = line.strip()
+        m = _RE_PROMOTION_SUBSIDY_LINE.match(stripped)
+        if not m:
+            m = _RE_PROMOTION_SUBSIDY_RM.search(line)
         if not m:
             continue
-        sign, amount_text = m.groups()
+        sign = m.group(1)
+        amount_text = m.group(2)
         amount = _normalize_price(amount_text)
         if amount is None:
             continue
         # Subsidy should reduce payable total.
         return -abs(amount) if sign == "-" else -abs(amount)
     return None
+
+
+def _resolve_shopee_payable_total(
+    text: str,
+    order_amount: float | None,
+    promotion_subsidy: float | None,
+) -> float | None:
+    """Prefer order_amount + subsidy; else 'Total' line with RM; else grand-total heuristics."""
+    if order_amount is not None and promotion_subsidy is not None:
+        return round(order_amount + promotion_subsidy, 2)
+    m = _RE_SHOPEE_PAYABLE_TOTAL.search(text)
+    if m:
+        p = _normalize_price(m.group(1))
+        if p is not None:
+            return p
+    return _extract_grand_total(text)
 
 
 def _is_noise_between_name_and_price(line: str) -> bool:
@@ -181,6 +230,149 @@ def _is_noise_between_name_and_price(line: str) -> bool:
     if token.lower() in _UI_ITEM_BLOCKLIST:
         return True
     return False
+
+
+_SHOPEE_DETAIL_SKIP_LINES = frozenset(
+    {
+        "mark as ready",
+        "cancel order",
+        "contact buyer",
+        "call driver",
+    }
+)
+
+
+def _should_skip_shopee_detail_line(line: str) -> bool:
+    """Skip UI chrome that sometimes appears in accessibility dumps."""
+    low = line.strip().lower()
+    if not low:
+        return True
+    if low in _SHOPEE_DETAIL_SKIP_LINES:
+        return True
+    if low.startswith("delivery at ") or low.startswith("ready in "):
+        return True
+    if "driver on the way" in low:
+        return True
+    return False
+
+
+def _collapse_shopee_detail_lines(detail_lines: list[str]) -> tuple[str, list[dict[str, str]]]:
+    """Turn grey lines under a Shopee item into note text + structured modifiers."""
+    modifiers: list[dict[str, str]] = []
+    note_parts: list[str] = []
+    for raw in detail_lines:
+        line = raw.strip()
+        if not line:
+            continue
+        kv = _RE_SHOPEE_MODIFIER_KV.match(line)
+        if kv:
+            label, value = kv.group(1).strip(), kv.group(2).strip()
+            modifiers.append({"label": label, "value": value})
+            continue
+        star = _RE_SHOPEE_NOTE_STAR.match(line)
+        if star:
+            note_parts.append(star.group(1).strip())
+            continue
+        note_parts.append(line)
+    note = "\n".join(note_parts).strip()
+    return note, modifiers
+
+
+def _parse_shopee_items_lines(lines: list[str], start_idx: int, end_idx: int) -> list[dict[str, Any]]:
+    """
+    Shopee merchant layout: quantity x name, then optional grey lines (addons, notes),
+    then a standalone RM price line. Captures multi-line customer instructions.
+    """
+    order_list: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    detail_lines: list[str] = []
+
+    for line in lines[start_idx:end_idx]:
+        inline = _RE_SHOPEE_ITEM_INLINE_PRICE.match(line)
+        if inline:
+            if current:
+                note, mods = _collapse_shopee_detail_lines(detail_lines)
+                if note:
+                    current["note"] = note
+                if mods:
+                    current["modifiers"] = mods
+                order_list.append(current)
+                current = None
+                detail_lines = []
+            qty_s, name_s, price_s = inline.groups()
+            name_clean = _RE_SHOPEE_NAME_BADGES.sub("", name_s.strip()).strip()
+            order_list.append(
+                {
+                    "quantity": int(qty_s),
+                    "name": name_clean,
+                    "price": _normalize_price(price_s),
+                    "note": "",
+                }
+            )
+            continue
+
+        item_match = _RE_ITEM_START.match(line)
+        if item_match:
+            if current:
+                note, mods = _collapse_shopee_detail_lines(detail_lines)
+                if note:
+                    current["note"] = note
+                if mods:
+                    current["modifiers"] = mods
+                order_list.append(current)
+            qty_text, name_text = item_match.groups()
+            cleaned_name = _RE_SHOPEE_NAME_BADGES.sub("", name_text.strip()).strip()
+            if cleaned_name.lower() in _UI_ITEM_BLOCKLIST:
+                current = None
+                detail_lines = []
+                continue
+            current = {
+                "quantity": int(qty_text),
+                "name": cleaned_name,
+                "price": None,
+                "note": "",
+            }
+            detail_lines = []
+            continue
+
+        if current is None:
+            continue
+
+        price_val: float | None = None
+        pm = _RE_SHOPEE_ITEM_PRICE_LINE.match(line)
+        if pm:
+            price_val = _normalize_price(pm.group(1))
+        else:
+            pom = _RE_PRICE_ONLY.match(line)
+            if pom:
+                price_val = _normalize_price(pom.group(1))
+
+        if price_val is not None:
+            note, mods = _collapse_shopee_detail_lines(detail_lines)
+            current["price"] = price_val
+            if note:
+                current["note"] = note
+            if mods:
+                current["modifiers"] = mods
+            order_list.append(current)
+            current = None
+            detail_lines = []
+            continue
+
+        if _should_skip_shopee_detail_line(line):
+            continue
+        # Grey addon/note/customer text — attach to current item, not the product name.
+        detail_lines.append(line.strip())
+
+    if current:
+        note, mods = _collapse_shopee_detail_lines(detail_lines)
+        if note:
+            current["note"] = note
+        if mods:
+            current["modifiers"] = mods
+        order_list.append(current)
+
+    return _dedupe_items(order_list)
 
 
 def _dedupe_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -428,6 +620,8 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             status="INCOMPLETE_SCRAPE",
             calculated_total=0.0,
             grand_total=None,
+            order_amount=None,
+            promotion_subsidy=None,
         )
 
     booking_id_match = _RE_BOOKING_ID.search(text)
@@ -511,93 +705,103 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
                     start_idx = idx
                     break
 
-        order_list: list[dict[str, Any]] = []
-        current_item: dict[str, Any] | None = None
-        pending_name_lines: list[str] = []
+        if shopee_order_id:
+            order_list = _parse_shopee_items_lines(lines, start_idx, end_idx)
+        else:
+            order_list = []
+            current_item: dict[str, Any] | None = None
+            pending_name_lines: list[str] = []
 
-        for line in lines[start_idx:end_idx]:
-            try:
-                item_match = _RE_ITEM_START.match(line)
-                if item_match:
-                    # Buffer pattern:
-                    # keep current item pending until we see a price line, then append.
-                    if current_item:
-                        if pending_name_lines and current_item.get("price") is None:
-                            stitched = " ".join(chunk.strip() for chunk in pending_name_lines if chunk.strip())
-                            if stitched:
-                                current_item["name"] = f'{current_item["name"]} {stitched}'.strip()
-                        order_list.append(current_item)
-                    qty_text, name_text = item_match.groups()
-                    cleaned_name = name_text.strip()
-                    if cleaned_name.lower() in _UI_ITEM_BLOCKLIST:
-                        current_item = None
+            for line in lines[start_idx:end_idx]:
+                try:
+                    item_match = _RE_ITEM_START.match(line)
+                    if item_match:
+                        if current_item:
+                            if pending_name_lines and current_item.get("price") is None:
+                                stitched = " ".join(
+                                    chunk.strip() for chunk in pending_name_lines if chunk.strip()
+                                )
+                                if stitched:
+                                    current_item["name"] = f'{current_item["name"]} {stitched}'.strip()
+                            order_list.append(current_item)
+                        qty_text, name_text = item_match.groups()
+                        cleaned_name = name_text.strip()
+                        if cleaned_name.lower() in _UI_ITEM_BLOCKLIST:
+                            current_item = None
+                            pending_name_lines = []
+                            continue
+                        current_item = {
+                            "quantity": int(qty_text),
+                            "name": cleaned_name,
+                            "price": None,
+                            "note": "",
+                        }
                         pending_name_lines = []
                         continue
-                    current_item = {
-                        "quantity": int(qty_text),
-                        "name": cleaned_name,
-                        "price": None,
-                        "note": "",
-                    }
-                    pending_name_lines = []
-                    continue
 
-                price_match = _RE_PRICE_ONLY.match(line)
-                if price_match and current_item:
-                    price = _normalize_price(price_match.group(1))
-                    if price is not None:
-                        if pending_name_lines:
-                            stitched = " ".join(chunk.strip() for chunk in pending_name_lines if chunk.strip())
-                            if stitched:
-                                current_item["name"] = f'{current_item["name"]} {stitched}'.strip()
-                            pending_name_lines = []
-                        current_item["price"] = price
-                        # price paired, now finalize item
-                        order_list.append(current_item)
-                        current_item = None
-                    continue
-
-                note_match = _RE_NOTE_LINE.match(line)
-                if note_match and current_item:
-                    note_symbol, note_body = note_match.groups()
-                    note_text = f"{note_symbol} {note_body.strip()}".strip()
-                    if note_text:
-                        existing_note = current_item.get("note", "")
-                        current_item["note"] = f"{existing_note}\n{note_text}".strip()
-                    continue
-
-                if current_item and current_item.get("price") is None:
-                    if _is_noise_between_name_and_price(line):
+                    price_match = _RE_PRICE_ONLY.match(line)
+                    if price_match and current_item:
+                        price = _normalize_price(price_match.group(1))
+                        if price is not None:
+                            if pending_name_lines:
+                                stitched = " ".join(
+                                    chunk.strip() for chunk in pending_name_lines if chunk.strip()
+                                )
+                                if stitched:
+                                    current_item["name"] = f'{current_item["name"]} {stitched}'.strip()
+                                pending_name_lines = []
+                            current_item["price"] = price
+                            order_list.append(current_item)
+                            current_item = None
                         continue
-                    pending_name_lines.append(line.strip())
-            except Exception as line_err:
-                logger.warning("Shopee parse line skipped: %s | line=%r", line_err, line)
-                continue
 
-        if current_item:
-            if pending_name_lines and current_item.get("price") is None:
-                stitched = " ".join(chunk.strip() for chunk in pending_name_lines if chunk.strip())
-                if stitched:
-                    current_item["name"] = f'{current_item["name"]} {stitched}'.strip()
-            order_list.append(current_item)
+                    note_match = _RE_NOTE_LINE.match(line)
+                    if note_match and current_item:
+                        note_symbol, note_body = note_match.groups()
+                        note_text = f"{note_symbol} {note_body.strip()}".strip()
+                        if note_text:
+                            existing_note = current_item.get("note", "")
+                            current_item["note"] = f"{existing_note}\n{note_text}".strip()
+                        continue
 
-        order_list = _dedupe_items(order_list)
+                    if current_item and current_item.get("price") is None:
+                        if _is_noise_between_name_and_price(line):
+                            continue
+                        pending_name_lines.append(line.strip())
+                except Exception as line_err:
+                    logger.warning("Generic parse line skipped: %s | line=%r", line_err, line)
+                    continue
+
+            if current_item:
+                if pending_name_lines and current_item.get("price") is None:
+                    stitched = " ".join(chunk.strip() for chunk in pending_name_lines if chunk.strip())
+                    if stitched:
+                        current_item["name"] = f'{current_item["name"]} {stitched}'.strip()
+                order_list.append(current_item)
+
+            order_list = _dedupe_items(order_list)
+
         order_amount = _extract_order_amount(text)
         promotion_subsidy = _extract_promotion_subsidy(text)
         parsed_total = _extract_grand_total(text)
-        if order_amount is not None and promotion_subsidy is not None:
-            final_total = round(order_amount + promotion_subsidy, 2)
-        elif parsed_total is not None:
-            final_total = parsed_total
-        else:
-            final_total = order_amount
+        final_total = _resolve_shopee_payable_total(text, order_amount, promotion_subsidy)
+        if final_total is None:
+            if parsed_total is not None:
+                final_total = parsed_total
+            else:
+                final_total = order_amount
 
         calculated_total = _calculate_items_total(order_list)
-        status = (
-            "INCOMPLETE_SCRAPE"
-            if final_total is not None and calculated_total + 0.01 < final_total
-            else "COMPLETE_SCRAPE"
-        )
+        if shopee_order_id and order_amount is not None:
+            status = (
+                "COMPLETE_SCRAPE"
+                if abs(calculated_total - order_amount) <= 0.02
+                else "INCOMPLETE_SCRAPE"
+            )
+        elif final_total is not None and calculated_total + 0.01 < final_total:
+            status = "INCOMPLETE_SCRAPE"
+        else:
+            status = "COMPLETE_SCRAPE"
 
         return ParsedOrderText(
             order_id=order_id,
@@ -609,8 +813,10 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             status=status,
             calculated_total=calculated_total,
             grand_total=final_total,
-            subtotal=None,
+            subtotal=order_amount if shopee_order_id else None,
             booking_id=booking_id,
+            order_amount=order_amount if shopee_order_id else None,
+            promotion_subsidy=promotion_subsidy if shopee_order_id else None,
         )
     except Exception as e:
         logger.exception("Shopee parse fallback: %s", e)
@@ -627,6 +833,8 @@ def parse_order_text(raw_text: str) -> ParsedOrderText:
             grand_total=fallback_total,
             subtotal=None,
             booking_id=booking_id,
+            order_amount=None,
+            promotion_subsidy=None,
         )
 
 

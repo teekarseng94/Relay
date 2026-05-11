@@ -62,7 +62,7 @@
 36-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:18:9-69
 37        android:supportsRtl="true"
 37-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:19:9-35
-38        android:testOnly="false"
+38        android:testOnly="true"
 38-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:20:9-33
 39        android:theme="@style/Theme.GastroPosRelay"
 39-->C:\Users\Acer\Documents\GitHub\Relay\app\src\main\AndroidManifest.xml:21:9-52
