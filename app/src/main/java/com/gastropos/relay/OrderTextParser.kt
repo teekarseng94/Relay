@@ -59,6 +59,27 @@ object OrderTextParser {
     private val itemStartPattern = Regex("^\\s*(\\d+)\\s*x\\s+(.+?)\\s*$", RegexOption.IGNORE_CASE)
     private val priceOnlyPattern = Regex("^\\s*-?\\s*(?:RM\\s*)?(\\d+(?:[.,]\\d{2})?)\\s*$", RegexOption.IGNORE_CASE)
     private val noteLinePattern = Regex("^\\s*([-*\\u2022])\\s*(.+?)\\s*$")
+    /** Shopee: same-line item + price (some merchant layouts). */
+    private val shopeeItemInlinePricePattern = Regex(
+        "^\\s*(\\d+)\\s*x\\s+(.+?)\\s+(?:RM|MYR)\\s*(\\d+(?:[.,]\\d{2})?)\\s*$",
+        RegexOption.IGNORE_CASE
+    )
+    /** Shopee: price-only line that explicitly uses RM/MYR (matches Python reference). */
+    private val shopeeItemPriceLinePattern = Regex(
+        "^\\s*(?:RM|MYR)\\s*(\\d+(?:[.,]\\d{2})?)\\s*$",
+        RegexOption.IGNORE_CASE
+    )
+    /** Structured addon line, e.g. "- Choice of Sugar: Less sugar". */
+    private val shopeeModifierKvPattern = Regex("^\\s*-\\s*(.+?):\\s*(.+?)\\s*$")
+    /** Shopee customer note line often shown as "* ..." or "* Note: ...". */
+    private val shopeeNoteStarPattern = Regex(
+        "^\\s*\\*\\s*(?:Note:\\s*)?(.+?)\\s*$",
+        RegexOption.IGNORE_CASE
+    )
+    private val shopeeNameBadgePattern = Regex(
+        "\\s+(Flash\\s+Sales|Hot\\s+Deal|Best\\s+Seller|Popular)\\s*$",
+        RegexOption.IGNORE_CASE
+    )
     private val sectionStartPattern = Regex(
         "(?i)\\b(order\\s*summary|items?|item\\s*list|your\\s*items?|order\\s*items?)\\b"
     )
@@ -66,11 +87,17 @@ object OrderTextParser {
         "(?i)\\b(order\\s*amount|promotion\\s*subsidy|subtotal|total|grand\\s*total|discount|delivery\\s*fee|service\\s*fee|paid\\s*with)\\b"
     )
     private val metaLinePattern = Regex(
-        "(?i)^\\s*(?:add-?on|addon|modifier|option|note|special\\s+instruction|remarks?)\\b[:：-]?\\s*$"
+        "(?i)^\\s*(?:add-?on|addon|modifier|option|notes?|special\\s+instruction|remarks?)\\b[:：-]?\\s*$"
     )
     private val uiItemBlocklist = setOf("back", "confirm", "cancel", "home")
     private val shopeeIgnoredIds = setOf("details", "order", "info")
     private val shopeeBlockedPrefixes = listOf("manual-", "ref-", "spx-", "shp-", "spm-", "auto-")
+    private val shopeeDetailSkipLines = setOf(
+        "mark as ready",
+        "cancel order",
+        "contact buyer",
+        "call driver"
+    )
 
     fun parse_order_text(rawText: String): ParsedOrderText = parseOrderText(rawText)
 
@@ -362,72 +389,139 @@ object OrderTextParser {
 
         val orderList = mutableListOf<ParsedOrderItem>()
         var currentItem: MutableParsedItem? = null
-        val pendingNameLines = mutableListOf<String>()
+        val detailLines = mutableListOf<String>()
+
+        fun appendCurrentShopeeItem() {
+            val item = currentItem ?: return
+            val collapsed = collapseShopeeDetailLines(detailLines)
+            if (collapsed.isNotBlank()) {
+                item.note = listOf(item.note, collapsed).filter { it.isNotBlank() }.joinToString("\n")
+            }
+            orderList.add(item.toParsedOrderItem())
+            currentItem = null
+            detailLines.clear()
+        }
 
         for (line in lines.subList(startIndex, endIndex)) {
+            val inlineItem = shopeeItemInlinePricePattern.matchEntire(line)
+            if (inlineItem != null) {
+                appendCurrentShopeeItem()
+                val qty = inlineItem.groups[1]?.value?.toIntOrNull() ?: continue
+                val name = stripShopeeNameBadges(inlineItem.groups[2]?.value.orEmpty().trim())
+                val price = normalizePrice(inlineItem.groups[3]?.value.orEmpty())
+                if (name.isNotBlank() && qty > 0 && name.lowercase(Locale.ROOT) !in uiItemBlocklist) {
+                    orderList.add(ParsedOrderItem(quantity = qty, name = name, price = price, note = ""))
+                }
+                continue
+            }
+
             val itemMatch = itemStartPattern.matchEntire(line)
             if (itemMatch != null) {
-                currentItem?.let {
-                    appendPendingName(it, pendingNameLines)
-                    orderList.add(it.toParsedOrderItem())
-                }
+                appendCurrentShopeeItem()
                 val qty = itemMatch.groups[1]?.value?.toIntOrNull()
-                val name = itemMatch.groups[2]?.value?.trim().orEmpty()
+                val name = stripShopeeNameBadges(itemMatch.groups[2]?.value?.trim().orEmpty())
                 if (qty == null || name.lowercase(Locale.ROOT) in uiItemBlocklist) {
                     currentItem = null
-                    pendingNameLines.clear()
+                    detailLines.clear()
                     continue
                 }
                 currentItem = MutableParsedItem(quantity = qty, name = name)
-                pendingNameLines.clear()
+                detailLines.clear()
                 continue
             }
 
-            val priceMatch = priceOnlyPattern.matchEntire(line)
-            if (priceMatch != null && currentItem != null) {
-                val price = normalizePrice(priceMatch.groups[1]?.value.orEmpty())
-                if (price != null) {
-                    appendPendingName(currentItem!!, pendingNameLines)
-                    currentItem!!.price = price
-                    orderList.add(currentItem!!.toParsedOrderItem())
-                    currentItem = null
+            val item = currentItem ?: continue
+
+            var priceFromLine: Double? = null
+            shopeeItemPriceLinePattern.matchEntire(line)?.let { m ->
+                priceFromLine = normalizePrice(m.groups[1]?.value.orEmpty())
+            }
+            if (priceFromLine == null) {
+                priceOnlyPattern.matchEntire(line)?.let { m ->
+                    priceFromLine = normalizePrice(m.groups[1]?.value.orEmpty())
                 }
-                continue
             }
-
-            val noteMatch = noteLinePattern.matchEntire(line)
-            if (noteMatch != null && currentItem != null) {
-                val symbol = noteMatch.groups[1]?.value.orEmpty()
-                val body = noteMatch.groups[2]?.value.orEmpty().trim()
-                val noteText = "$symbol $body".trim()
-                if (noteText.isNotBlank()) {
-                    currentItem!!.note = listOf(currentItem!!.note, noteText)
+            if (priceFromLine != null) {
+                val collapsed = collapseShopeeDetailLines(detailLines)
+                if (collapsed.isNotBlank()) {
+                    item.note = listOf(item.note, collapsed)
                         .filter { it.isNotBlank() }
                         .joinToString("\n")
                 }
+                item.price = priceFromLine
+                orderList.add(item.toParsedOrderItem())
+                currentItem = null
+                detailLines.clear()
                 continue
             }
 
-            if (currentItem != null && currentItem!!.price == null && !isNoiseBetweenNameAndPrice(line)) {
-                pendingNameLines.add(line)
+            if (shouldSkipShopeeDetailLine(line)) {
+                continue
             }
+            val trimmed = line.trim()
+            if (metaLinePattern.matches(trimmed)) {
+                continue
+            }
+            detailLines.add(trimmed)
         }
 
-        currentItem?.let {
-            appendPendingName(it, pendingNameLines)
-            orderList.add(it.toParsedOrderItem())
-        }
+        appendCurrentShopeeItem()
 
         return dedupeItems(orderList)
     }
 
-    private fun appendPendingName(item: MutableParsedItem, pendingNameLines: MutableList<String>) {
-        if (pendingNameLines.isEmpty() || item.price != null) return
-        val stitched = pendingNameLines.joinToString(" ") { it.trim() }.trim()
-        if (stitched.isNotBlank()) {
-            item.name = "${item.name} $stitched".trim()
+    private fun stripShopeeNameBadges(name: String): String {
+        return shopeeNameBadgePattern.replace(name, "").trim()
+    }
+
+    private fun shouldSkipShopeeDetailLine(line: String): Boolean {
+        val low = line.trim().lowercase(Locale.ROOT)
+        if (low.isEmpty()) {
+            return true
         }
-        pendingNameLines.clear()
+        if (low in shopeeDetailSkipLines) {
+            return true
+        }
+        if (low.startsWith("delivery at ") || low.startsWith("ready in ")) {
+            return true
+        }
+        if (low.contains("driver on the way")) {
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Grey lines under a Shopee item (addons, "Notes:", customer text) belong in [ParsedOrderItem.note],
+     * not in the product title (see Python `_collapse_shopee_detail_lines`).
+     */
+    private fun collapseShopeeDetailLines(detailLines: List<String>): String {
+        val parts = mutableListOf<String>()
+        for (raw in detailLines) {
+            val line = raw.trim()
+            if (line.isEmpty()) {
+                continue
+            }
+            val kv = shopeeModifierKvPattern.matchEntire(line)
+            if (kv != null) {
+                val label = kv.groups[1]?.value?.trim().orEmpty()
+                val value = kv.groups[2]?.value?.trim().orEmpty()
+                if (label.isNotBlank() || value.isNotBlank()) {
+                    parts.add("- $label: $value".trimEnd())
+                }
+                continue
+            }
+            val starNote = shopeeNoteStarPattern.matchEntire(line)
+            if (starNote != null) {
+                val body = starNote.groups[1]?.value?.trim().orEmpty()
+                if (body.isNotBlank()) {
+                    parts.add(body)
+                }
+                continue
+            }
+            parts.add(line)
+        }
+        return parts.joinToString("\n").trim()
     }
 
     private fun normalizePrice(value: String): Double? {
