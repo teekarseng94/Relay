@@ -39,9 +39,8 @@
             android:label="@string/accessibility_service_label"
             android:description="@string/accessibility_description"
             android:enabled="true"
-            android:directBootAware="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>

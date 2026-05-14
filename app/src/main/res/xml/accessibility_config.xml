@@ -5,6 +5,6 @@
     android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_description"
-    android:settingsActivity="com.gastropos.relay.MainActivity"
+    android:settingsActivity=".MainActivity"
     android:summary="@string/accessibility_description"
     android:notificationTimeout="100" />
